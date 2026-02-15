@@ -1,0 +1,23 @@
+#Basic
+torch
+numpy
+pandas
+tqdm
+
+#Hugging Face
+transformers
+datasets
+accelerate
+tokenizers
+huggingface_hub
+
+#Retrieval and Embeddings
+faiss-cpu
+sentence-transformers
+
+#Evaluation
+rouge-score
+scikit-learn
+
+#Environment & API
+python-dotenv

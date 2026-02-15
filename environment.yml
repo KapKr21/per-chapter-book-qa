@@ -1,0 +1,29 @@
+name: per-chapter-book-qa
+
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+
+dependencies:
+  - python=3.10
+  - pip
+  - pytorch
+  - torchvision
+  - torchaudio
+  - pytorch-cuda=12.1  #modern LLM requirements
+  - [cite_start]faiss-cpu          #chapter-restricted retrieval
+  - numpy
+  - pandas
+  - scikit-learn
+  - pip:
+      - transformers>=4.40.0  #supports LLaMA 3 / Mistral
+      - [cite_start]datasets              #for loading NarrativeQA and BOOKSUM
+      - accelerate            #multi-GPU/CPU inference
+      - [cite_start]sentence-transformers #dense chapter embeddings
+      - [cite_start]rouge-score           #automatic evaluation
+      - python-dotenv         #API key management
+      - bitsandbytes          #4-bit/8-bit quantization of large models
+      - peft                  #pParameter-Efficient Fine-Tuning
+      - tqdm                  #progress bars for preprocessing
