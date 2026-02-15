@@ -1,6 +1,9 @@
 # src/preprocess.py
 from datasets import load_dataset
 
+IDK_FALLBACK = "I don't know based on the given text."
+
+
 class BookPreprocessor:
     def __init__(self, narrative_split="train[:2000]", booksum_split="train[:2000]"):
         """
@@ -12,19 +15,13 @@ class BookPreprocessor:
         self.booksum = load_dataset("kmfoda/booksum", split=booksum_split)
 
     def list_available_bids(self, limit=20):
-        """
-        Return bids that have chapter text in the loaded BookSum slice.
-        """
+        """Return bids that have chapter text in the loaded BookSum slice."""
         bids = []
         seen = set()
         for ex in self.booksum:
             bid = ex.get("bid")
             chapter = ex.get("chapter", "")
-            if bid is None:
-                continue
-            if bid in seen:
-                continue
-            if not chapter:
+            if bid is None or bid in seen or not chapter:
                 continue
             bids.append(bid)
             seen.add(bid)
@@ -36,17 +33,21 @@ class BookPreprocessor:
         """
         Align NarrativeQA questions to BookSum chapters.
 
-        - Uses BookSum column: 'chapter'
-        - Robust to int/str bid mismatch
-        - Does NOT assume NarrativeQA IDs match BookSum bids
+        IMPORTANT:
+        - NarrativeQA IDs generally do NOT match BookSum bids.
+        - Title matching may or may not work depending on fields present in your BookSum slice.
+        - This function will:
+            1) try title matching if possible
+            2) otherwise (or if it yields nothing) fall back to scanning NarrativeQA slice
+               until it collects max_questions.
+        - Unlocatable / missing-answer pairs become:
+            max_chapter_idx = -1, unanswerable=True, gold_answer=IDK_FALLBACK
         """
 
         # ---------- 1) Match BookSum chapters ----------
         def _match_bid(x):
             b = x.get("bid")
-            if b is None:
-                return False
-            return str(b) == str(book_bid)
+            return b is not None and str(b) == str(book_bid)
 
         book_chapters = self.booksum.filter(_match_bid)
 
@@ -58,72 +59,111 @@ class BookPreprocessor:
                 f"Try increasing --booksum_split (e.g., train[:20000])."
             )
 
-        # BookSum text column is 'chapter'
-        chapters_text = [
-            c.get("chapter", "")
-            for c in book_chapters
-            if c.get("chapter")
-        ]
-
+        chapters_text = [c.get("chapter", "") for c in book_chapters if c.get("chapter")]
         if not chapters_text:
             raise ValueError(f"Chapters exist for bid={book_bid}, but chapter text is empty.")
 
-        # ---------- 2) Select NarrativeQA questions ----------
-        # NOTE:
-        # NarrativeQA document IDs DO NOT reliably match BookSum bids.
-        # So we simply take a slice of NarrativeQA questions.
-        # pseudo-fix: find BookSum title for this bid, then filter narrativeqa by title/doc id
-        book_title = book_chapters[0].get("title")  # if available
+        # ---------- 2) Try title-based matching (if title exists and looks usable) ----------
+        book_title = (book_chapters[0].get("title") or "").strip()
+        book_questions = None
 
-        def _match_nqa(ex):
-            doc = ex.get("document", {}) or {}
-            # adapt keys based on dataset schema
-            return str(doc.get("title","")).strip().lower() == str(book_title).strip().lower()
+        if book_title:
+            def _match_nqa(ex):
+                doc = ex.get("document", {}) or {}
+                doc_title = (doc.get("title") or "").strip().lower()
+                return doc_title == book_title.lower()
 
-        book_questions = self.narrative_qa.filter(_match_nqa)
+            try:
+                filtered = self.narrative_qa.filter(_match_nqa)
+                if len(filtered) > 0:
+                    book_questions = filtered
+            except Exception:
+                # if schema mismatch or filter fails, fall back to scanning
+                book_questions = None
 
+        # ---------- 3) Build aligned_data (with fallback scanning) ----------
         aligned_data = []
 
-        for q in book_questions:
-            answers = q.get("answers", [])
-            if not answers:
-                continue
+        def _extract_question_text(ex):
+            q = ex.get("question")
+            if isinstance(q, dict):
+                return (q.get("text") or "").strip()
+            return (q or "").strip()
 
-            answer = answers[0].get("text", "")
-            if not answer:
-                continue
+        def _extract_answer_text(ex):
+            answers = ex.get("answers", [])
+            if isinstance(answers, list) and answers:
+                a0 = answers[0]
+                if isinstance(a0, dict):
+                    return (a0.get("text") or a0.get("answer") or "").strip()
+                if isinstance(a0, str):
+                    return a0.strip()
+            if isinstance(answers, dict):
+                return (answers.get("text") or "").strip()
+            return ""
 
-            k = self._find_first_revealing_chapter(answer, chapters_text)
+        def _add_example(q_text, answer_text):
+            if not answer_text:
+                aligned_data.append({
+                    "question": q_text,
+                    "gold_answer": IDK_FALLBACK,
+                    "max_chapter_idx": -1,
+                    "unanswerable": True
+                })
+                return
+
+            k = self._find_first_revealing_chapter(answer_text, chapters_text)
             if k is None:
                 aligned_data.append({
-                    "question": q.get("question", {}).get("text", ""),
-                    "gold_answer": answer,
+                    "question": q_text,
+                    "gold_answer": IDK_FALLBACK,
                     "max_chapter_idx": -1,
                     "unanswerable": True
                 })
             else:
                 aligned_data.append({
-                    "question": q.get("question", {}).get("text", ""),
-                    "gold_answer": answer,
+                    "question": q_text,
+                    "gold_answer": answer_text,
                     "max_chapter_idx": k,
                     "unanswerable": False
                 })
 
+        # 3a) If title match worked, iterate it; otherwise scan entire slice
+        source_iter = book_questions if book_questions is not None else self.narrative_qa
+
+        for ex in source_iter:
+            q_text = _extract_question_text(ex)
+            if not q_text:
+                continue
+
+            answer_text = _extract_answer_text(ex)
+            _add_example(q_text, answer_text)
+
+            if len(aligned_data) >= max_questions:
+                break
+
         if not aligned_data:
-            raise ValueError("No valid questions found in NarrativeQA slice.")
+            raise ValueError(
+                "No usable questions found in NarrativeQA slice after scanning.\n"
+                "Try increasing --narrative_split (e.g., train[:20000])."
+            )
 
         return aligned_data, chapters_text
 
     def _find_first_revealing_chapter(self, answer, chapters):
-        kws = [w.lower() for w in answer.split() if len(w) > 3]
-        kws = kws[:8]  # cap to avoid noise
+        """
+        Heuristic: find earliest chapter containing enough keyword evidence from the answer.
+        Returns chapter index, or None if answer cannot be located in the book.
+        """
+        kws = [w.lower() for w in str(answer).split() if len(w) > 3]
+        kws = kws[:8]
         if not kws:
             return None
 
         for idx, text in enumerate(chapters):
             t = text.lower()
             hits = sum(1 for k in kws[:3] if k in t)
-            if hits >= 2:   # require stronger evidence than "any one keyword"
+            if hits >= 2:
                 return idx
 
-        return None  # <--- IMPORTANT CHANGE
+        return None
