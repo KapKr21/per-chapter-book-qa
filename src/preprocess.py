@@ -72,9 +72,15 @@ class BookPreprocessor:
         # NOTE:
         # NarrativeQA document IDs DO NOT reliably match BookSum bids.
         # So we simply take a slice of NarrativeQA questions.
-        book_questions = self.narrative_qa.select(
-            range(min(max_questions, len(self.narrative_qa)))
-        )
+        # pseudo-fix: find BookSum title for this bid, then filter narrativeqa by title/doc id
+        book_title = book_chapters[0].get("title")  # if available
+
+        def _match_nqa(ex):
+            doc = ex.get("document", {}) or {}
+            # adapt keys based on dataset schema
+            return str(doc.get("title","")).strip().lower() == str(book_title).strip().lower()
+
+        book_questions = self.narrative_qa.filter(_match_nqa)
 
         aligned_data = []
 
@@ -88,12 +94,20 @@ class BookPreprocessor:
                 continue
 
             k = self._find_first_revealing_chapter(answer, chapters_text)
-
-            aligned_data.append({
-                "question": q.get("question", {}).get("text", ""),
-                "gold_answer": answer,
-                "max_chapter_idx": k
-            })
+            if k is None:
+                aligned_data.append({
+                    "question": q.get("question", {}).get("text", ""),
+                    "gold_answer": answer,
+                    "max_chapter_idx": -1,
+                    "unanswerable": True
+                })
+            else:
+                aligned_data.append({
+                    "question": q.get("question", {}).get("text", ""),
+                    "gold_answer": answer,
+                    "max_chapter_idx": k,
+                    "unanswerable": False
+                })
 
         if not aligned_data:
             raise ValueError("No valid questions found in NarrativeQA slice.")
@@ -101,10 +115,15 @@ class BookPreprocessor:
         return aligned_data, chapters_text
 
     def _find_first_revealing_chapter(self, answer, chapters):
-        # simple keyword heuristic (good enough for v1)
         kws = [w.lower() for w in answer.split() if len(w) > 3]
+        kws = kws[:8]  # cap to avoid noise
+        if not kws:
+            return None
+
         for idx, text in enumerate(chapters):
             t = text.lower()
-            if any(k in t for k in kws[:3]):
+            hits = sum(1 for k in kws[:3] if k in t)
+            if hits >= 2:   # require stronger evidence than "any one keyword"
                 return idx
-        return len(chapters) - 1
+
+        return None  # <--- IMPORTANT CHANGE

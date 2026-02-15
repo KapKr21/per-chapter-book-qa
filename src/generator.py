@@ -78,7 +78,7 @@ class LongContextGenerator:
             return_tensors="pt",
             truncation=True,
             # Keep this conservative unless you *know* you can handle more
-            max_length=2048,
+            max_length=8192,
         ).to(self.model.device)
 
         with torch.inference_mode():
@@ -92,8 +92,7 @@ class LongContextGenerator:
                 no_repeat_ngram_size=6,
             )
 
-        text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
-        # Best-effort strip
-        if "ANSWER:" in text:
-            text = text.split("ANSWER:")[-1].strip()
+        prompt_len = inputs["input_ids"].shape[1]
+        gen_tokens = outputs[0, prompt_len:]
+        text = self.tokenizer.decode(gen_tokens, skip_special_tokens=True).strip()
         return text
