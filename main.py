@@ -121,7 +121,7 @@ def run_experiment(
             safe_context = all_chapters[:max_allowed_k + 1] if max_allowed_k >= 0 else [all_chapters[0]]
 
         # Cap context to prevent CUDA OOM from very long prompts
-        safe_context = _cap_context_by_chars(safe_context, max_context_chars=max_context_chars)
+        safe_context = _cap_context_by_chars(safe_context, max_chars=max_context_chars)
 
         # Generation
         ans = gen.generate_answer(q, safe_context, max_new_tokens=max_new_tokens)
