@@ -47,12 +47,12 @@ def run_experiment(
     top_k: int = 2,
     max_context_chars: int = 12000,
 ):
-    prep = BookPreprocessor(narrative_split=narrative_split, 
+    prep = BookPreprocessor(narrative_split=narrative_split,
                             booksum_split=booksum_split)
     gen = LongContextGenerator(model_id=model_id)
     evaluator = BookEvaluator()
 
-    aligned_questions, all_chapters = prep.align_questions_to_chapters(book_bid, 
+    aligned_questions, all_chapters = prep.align_questions_to_chapters(book_bid,
                                                                        max_questions=max_questions)
 
     if not all_chapters:
@@ -84,11 +84,17 @@ def run_experiment(
         retriever = ChapterRestrictedRetriever(embedder)
         retriever.build_index(all_chapters)
 
+        try:
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except Exception:
+            pass
+
     results_all = []
     spoiler_flags = 0
     spoiler_denom = 0
 
-    # Run loop
     for i, entry in enumerate(aligned_questions, start=1):
         q = entry["question"]
         k = entry.get("max_chapter_idx", -1)
@@ -111,7 +117,10 @@ def run_experiment(
 
         safe_context = _cap_context_by_chars(safe_context, max_chars=max_context_chars)
 
-        ans = gen.generate_answer(q, safe_context, max_new_tokens=max_new_tokens)
+        if unanswerable:
+            ans = IDK_FALLBACK
+        else:
+            ans = gen.generate_answer(q, safe_context, max_new_tokens=max_new_tokens)
 
         metrics = evaluator.evaluate(ans, gold, future_context)
 
@@ -130,7 +139,7 @@ def run_experiment(
         print(f"Q: {q}")
         print(f"A: {ans}\n")
         if retriever is not None:
-            #print(f"safe_ids: {safe_ids}")
+            # print(f"safe_ids: {safe_ids}")
             print(f"")
 
     avg_rouge = sum(r["rougeL"] for r in results_all) / len(results_all)
