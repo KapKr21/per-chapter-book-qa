@@ -32,9 +32,7 @@ class BookPreprocessor:
         if not chapters_text:
             raise ValueError(f"No chapters found for bid={book_bid} in BookSum split.")
 
-        book_questions = self.narrative_qa.filter(
-            lambda x: x.get("document", {}).get("id") == book_bid
-        )
+        book_questions = self.narrative_qa.select(range(min(max_questions, len(self.narrative_qa))))
 
         aligned_data = []
         n = min(max_questions, len(book_questions))
