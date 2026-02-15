@@ -125,7 +125,7 @@ def run_experiment(
             if metrics.get("spoiler_violation"):
                 spoiler_flags += 1
 
-        print(f"\nExample {i}\n")
+        print(f"Example {i}\n")
         print(f"k = {k} | unanswerable = {unanswerable} | Spoiler Safe: {not metrics['spoiler_violation']} | ROUGE-L = {metrics['rougeL']:.4f}\n")
         print(f"Q: {q}")
         print(f"A: {ans}\n")
@@ -136,7 +136,7 @@ def run_experiment(
     avg_rouge = sum(r["rougeL"] for r in results_all) / len(results_all)
     spoiler_rate = (spoiler_flags / spoiler_denom) if spoiler_denom > 0 else 0.0
 
-    print("\nSummary\n")
+    print("Summary\n")
     print(f"book_bid: {book_bid}")
     print(f"num_examples: {len(results_all)}")
     print(f"avg_rougeL: {avg_rouge:.4f}")
