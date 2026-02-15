@@ -13,7 +13,7 @@ def run_experiment(
     booksum_split: str = "train[:2000]",
     max_questions: int = 25,
     model_id: str = "Qwen/Qwen2.5-7B-Instruct-1M",
-    max_new_tokens: int = 200,
+    max_new_tokens: int = 64,
 ):
     # 0) Init components
     prep = BookPreprocessor(narrative_split=narrative_split, booksum_split=booksum_split)
@@ -77,7 +77,7 @@ def main():
     parser.add_argument("--booksum_split", type=str, default="train[:2000]", help="HF split slice for BookSum")
     parser.add_argument("--max_questions", type=int, default=25, help="Max aligned questions to run")
     parser.add_argument("--model_id", type=str, default="Qwen/Qwen2.5-7B-Instruct-1M", help="HF model id")
-    parser.add_argument("--max_new_tokens", type=int, default=200, help="Generation length")
+    parser.add_argument("--max_new_tokens", type=int, default=64, help="Generation length")
     args = parser.parse_args()
 
     rc = run_experiment(

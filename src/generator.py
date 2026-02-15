@@ -66,8 +66,8 @@ class LongContextGenerator:
 
         prompt = (
             "You are a spoiler-free assistant.\n"
-            "Answer ONLY using the provided context.\n"
-            "If the answer is not in the context, say: \"I don't know based on the given text.\".\n\n"
+            "\nAnswer ONLY using the provided context.\n"
+            "\nIf the answer is not in the context, say: \"I don't know based on the given text.\".\n\n"
             f"CONTEXT:\n{context}\n\n"
             f"QUESTION: {question}\n"
             "ANSWER:"
@@ -86,6 +86,10 @@ class LongContextGenerator:
                 **inputs,
                 max_new_tokens=max_new_tokens,
                 do_sample=False,
+                eos_token_id=self.tokenizer.eos_token_id,
+                pad_token_id=self.tokenizer.pad_token_id,
+                repetition_penalty=1.15,
+                no_repeat_ngram_size=6,
             )
 
         text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
