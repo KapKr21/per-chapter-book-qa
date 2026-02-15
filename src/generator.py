@@ -1,47 +1,96 @@
+# src/generator.py
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import BitsAndBytesConfig
 
 class LongContextGenerator:
-    def __init__(self, model_id="Qwen/Qwen2.5-7B-Instruct-1M"):
-        #Quantization is necessary for 1M context windows on typical GPUs
-        bnb_config = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_compute_dtype=torch.float16,
-            bnb_4bit_quant_type="nf4"
-        )
-        
-        print(f"Loading {model_id} with 1M context support...")
-        self.tokenizer = AutoTokenizer.from_pretrained(model_id)
-        self.model = AutoModelForCausalLM.from_pretrained(
-            model_id,
-            quantization_config=bnb_config,
+    """
+    Pascal GPU generator.
+    - Tries FlashAttention2 if available
+    - Falls back automatically if not
+    - Uses 4-bit quant by default (common for 7B+ on 1 GPU)
+    """
+
+    def __init__(
+        self,
+        model_id="Qwen/Qwen2.5-7B-Instruct-1M",
+        load_in_4bit=True,
+        try_flash_attention_2=True,
+    ):
+        self.model_id = model_id
+
+        quantization_config = None
+        if load_in_4bit:
+            quantization_config = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_compute_dtype=torch.float16,
+                bnb_4bit_quant_type="nf4",
+            )
+
+        print(f"Loading generator: {model_id}")
+        self.tokenizer = AutoTokenizer.from_pretrained(model_id, use_fast=True)
+
+        # Some causal LMs need pad token defined for batching
+        if self.tokenizer.pad_token is None and self.tokenizer.eos_token is not None:
+            self.tokenizer.pad_token = self.tokenizer.eos_token
+
+        model_kwargs = dict(
             device_map="auto",
-            #Enabling Flash Attention 2 for efficient long-sequence handling
-            attn_implementation="flash_attention_2" 
+            torch_dtype=torch.float16,
+        )
+        if quantization_config is not None:
+            model_kwargs["quantization_config"] = quantization_config
+
+        # Try flash_attention_2; if it fails, fall back.
+        if try_flash_attention_2:
+            try:
+                self.model = AutoModelForCausalLM.from_pretrained(
+                    model_id,
+                    attn_implementation="flash_attention_2",
+                    **model_kwargs,
+                )
+                print("✅ Using FlashAttention2.")
+            except Exception as e:
+                print(f"⚠️ FlashAttention2 unavailable, falling back. Reason: {type(e).__name__}: {e}")
+                self.model = AutoModelForCausalLM.from_pretrained(model_id, **model_kwargs)
+        else:
+            self.model = AutoModelForCausalLM.from_pretrained(model_id, **model_kwargs)
+
+        self.model.eval()
+
+    def generate_answer(self, question, context_chunks, max_new_tokens=200):
+        """
+        context_chunks: list[str] of *safe* text pieces (retrieved)
+        """
+        context = "\n\n".join(context_chunks)
+
+        prompt = (
+            "You are a spoiler-free assistant.\n"
+            "Answer ONLY using the provided context.\n"
+            "If the answer is not in the context, say: \"I don't know based on the given text.\".\n\n"
+            f"CONTEXT:\n{context}\n\n"
+            f"QUESTION: {question}\n"
+            "ANSWER:"
         )
 
-    def generate_answer(self, question, chapters_up_to_k):
-        """
-        Feeds the entire book context (up to the spoiler boundary) into the LLM.
-        """
-        context = "\n\n".join(chapters_up_to_k)
-        
-        prompt = f"""<|im_start|>system
-You are a spoiler-free assistant. Answer the question based ONLY on the provided text.
-<|im_end|>
-<|im_start|>user
-BOOK CONTEXT (Chapters 1 to {len(chapters_up_to_k)}):
-{context}
+        inputs = self.tokenizer(
+            prompt,
+            return_tensors="pt",
+            truncation=True,
+            # Keep this conservative unless you *know* you can handle more
+            max_length=8192,
+        ).to(self.model.device)
 
-QUESTION: {question}
-<|im_end|>
-<|im_start|>assistant"""
+        with torch.inference_mode():
+            outputs = self.model.generate(
+                **inputs,
+                max_new_tokens=max_new_tokens,
+                temperature=0.2,
+                do_sample=False,
+            )
 
-        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.model.device)
-        
-        #1M token check
-        if inputs.input_ids.shape[1] > 1000000:
-            print("Warning: Input exceeds 1M tokens. Truncating.")
-            
-        outputs = self.model.generate(**inputs, max_new_tokens=256, temperature=0.1)
-        return self.tokenizer.decode(outputs[0][inputs.input_ids.shape[1]:], skip_special_tokens=True)
+        text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+        # Best-effort strip
+        if "ANSWER:" in text:
+            text = text.split("ANSWER:")[-1].strip()
+        return text
