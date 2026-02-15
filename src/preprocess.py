@@ -13,18 +13,18 @@ class BookPreprocessor:
 
     def list_available_bids(self, limit=20):
         """
-        Return bids that are guaranteed to have >=1 chapter text in the loaded slice.
+        Return bids that have chapter text in the loaded BookSum slice.
         """
         bids = []
         seen = set()
         for ex in self.booksum:
             bid = ex.get("bid")
-            txt = ex.get("text", "")
+            chapter = ex.get("chapter", "")
             if bid is None:
                 continue
             if bid in seen:
                 continue
-            if not txt:
+            if not chapter:
                 continue
             bids.append(bid)
             seen.add(bid)
@@ -34,47 +34,51 @@ class BookPreprocessor:
 
     def align_questions_to_chapters(self, book_bid, max_questions=50):
         """
-        Align questions to the chapter where the answer is first revealed.
-        Returns: aligned_data, chapters_text
-        """
-        # ---- Robust bid normalization (handles "27681" vs 27681) ----
-        try:
-            bid_int = int(book_bid)
-        except Exception:
-            bid_int = None
+        Align NarrativeQA questions to BookSum chapters.
 
-        # Try both comparisons (some datasets store as int, some as str)
+        - Uses BookSum column: 'chapter'
+        - Robust to int/str bid mismatch
+        - Does NOT assume NarrativeQA IDs match BookSum bids
+        """
+
+        # ---------- 1) Match BookSum chapters ----------
         def _match_bid(x):
             b = x.get("bid")
             if b is None:
                 return False
-            if bid_int is not None and b == bid_int:
-                return True
             return str(b) == str(book_bid)
 
         book_chapters = self.booksum.filter(_match_bid)
 
-        # Debug help if filter fails
         if len(book_chapters) == 0:
-            # show a few bids from the currently loaded slice
-            sample = [self.booksum[i].get("bid") for i in range(min(20, len(self.booksum)))]
+            sample_bids = list({str(self.booksum[i]["bid"]) for i in range(min(20, len(self.booksum)))})
             raise ValueError(
-                f"No chapters found for bid={book_bid} in CURRENT BookSum slice.\n"
-                f"Example bids in loaded slice: {sample}\n"
-                f"Tip: increase booksum_split (e.g., train[:20000]) or choose a bid from this sample."
+                f"No chapters found for bid={book_bid} in loaded BookSum slice.\n"
+                f"Example bids in this slice: {sample_bids}\n"
+                f"Try increasing --booksum_split (e.g., train[:20000])."
             )
 
-        chapters_text = [c.get("text", "") for c in book_chapters if c.get("text")]
-        if not chapters_text:
-            raise ValueError(f"Chapters found for bid={book_bid} but chapter text is empty.")
+        # BookSum text column is 'chapter'
+        chapters_text = [
+            c.get("chapter", "")
+            for c in book_chapters
+            if c.get("chapter")
+        ]
 
-        # NOTE: NarrativeQA and BookSum IDs do NOT match reliably.
-        # For now, just use a small set of NarrativeQA questions without trying to match ids.
-        book_questions = self.narrative_qa.select(range(min(max_questions, len(self.narrative_qa))))
+        if not chapters_text:
+            raise ValueError(f"Chapters exist for bid={book_bid}, but chapter text is empty.")
+
+        # ---------- 2) Select NarrativeQA questions ----------
+        # NOTE:
+        # NarrativeQA document IDs DO NOT reliably match BookSum bids.
+        # So we simply take a slice of NarrativeQA questions.
+        book_questions = self.narrative_qa.select(
+            range(min(max_questions, len(self.narrative_qa)))
+        )
 
         aligned_data = []
-        n = min(max_questions, len(book_questions))
-        for q in book_questions.select(range(n)):
+
+        for q in book_questions:
             answers = q.get("answers", [])
             if not answers:
                 continue
@@ -84,14 +88,17 @@ class BookPreprocessor:
                 continue
 
             k = self._find_first_revealing_chapter(answer, chapters_text)
+
             aligned_data.append({
                 "question": q.get("question", {}).get("text", ""),
                 "gold_answer": answer,
                 "max_chapter_idx": k
             })
 
-        return aligned_data, chapters_text
+        if not aligned_data:
+            raise ValueError("No valid questions found in NarrativeQA slice.")
 
+        return aligned_data, chapters_text
 
     def _find_first_revealing_chapter(self, answer, chapters):
         # simple keyword heuristic (good enough for v1)

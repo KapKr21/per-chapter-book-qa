@@ -15,7 +15,7 @@ class LongContextGenerator:
         self,
         model_id="Qwen/Qwen2.5-7B-Instruct-1M",
         load_in_4bit=True,
-        try_flash_attention_2=True,
+        try_flash_attention_2=False,
     ):
         self.model_id = model_id
 
