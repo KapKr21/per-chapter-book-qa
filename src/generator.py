@@ -60,6 +60,12 @@ class LongContextGenerator:
 
         self.model.eval()
 
+        gc = self.model.generation_config
+        gc.do_sample = False
+        gc.temperature = None
+        gc.top_p = None
+        gc.top_k = None
+
     def generate_answer(self, question, context_chunks, max_new_tokens=80, max_input_tokens=1024):
         context = "\n\n".join(context_chunks)
 
@@ -86,6 +92,7 @@ class LongContextGenerator:
                 input_ids=input_ids,
                 attention_mask=attn,
                 max_new_tokens=max_new_tokens,
+                generation_config=self.model.generation_config,
                 do_sample=False,
                 eos_token_id=self.tokenizer.eos_token_id,
                 pad_token_id=self.tokenizer.pad_token_id,

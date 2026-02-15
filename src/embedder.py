@@ -1,10 +1,16 @@
 from sentence_transformers import SentenceTransformer
 
+import logging
+logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
+logging.getLogger("transformers.modeling_utils").setLevel(logging.ERROR)
+
 class BookEmbedder:
     def __init__(self, model_name='sentence-transformers/all-MiniLM-L6-v2', device="cpu"):
-        # Force CPU so it doesn't steal VRAM from the LLM
         self.device = device
-        self.model = SentenceTransformer(model_name, device=self.device)
+        self.model = SentenceTransformer(
+            model_name,
+            device=self.device
+        )
 
     def embed_chapters(self, chapters):
         print(f"Embedding {len(chapters)} chapters...")
