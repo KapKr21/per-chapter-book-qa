@@ -78,7 +78,7 @@ class LongContextGenerator:
             return_tensors="pt",
             truncation=True,
             # Keep this conservative unless you *know* you can handle more
-            max_length=8192,
+            max_length=2048,
         ).to(self.model.device)
 
         with torch.inference_mode():
