@@ -36,7 +36,7 @@ class LongContextGenerator:
 
         model_kwargs = dict(
             device_map="auto",
-            torch_dtype=torch.float16,
+            dtype=torch.float16,
         )
         if quantization_config is not None:
             model_kwargs["quantization_config"] = quantization_config
