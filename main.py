@@ -1,4 +1,3 @@
-# main.py  (DROP-IN FIX)
 import argparse
 import sys
 
@@ -11,7 +10,6 @@ from src.retriever import ChapterRestrictedRetriever
 
 IDK_FALLBACK = "I don't know based on the given text."
 
-
 def _cap_context_by_chars(chunks, max_chars: int):
     """
     Keep the *end* of the context (usually more relevant with chapter slices),
@@ -22,7 +20,6 @@ def _cap_context_by_chars(chunks, max_chars: int):
 
     out = []
     total = 0
-    # take from the end to preserve most recent/likely relevant text
     for c in reversed(chunks):
         if not c:
             continue
@@ -31,14 +28,13 @@ def _cap_context_by_chars(chunks, max_chars: int):
             remain = max_chars - total
             if remain <= 0:
                 break
-            out.append(c[-remain:])  # take tail of this chunk
+            out.append(c[-remain:])
             total += remain
             break
         out.append(c)
         total += len(c)
 
     return list(reversed(out)) if out else chunks[:1]
-
 
 def run_experiment(
     book_bid: str,
@@ -51,13 +47,13 @@ def run_experiment(
     top_k: int = 2,
     max_context_chars: int = 12000,
 ):
-    # Init components
-    prep = BookPreprocessor(narrative_split=narrative_split, booksum_split=booksum_split)
+    prep = BookPreprocessor(narrative_split=narrative_split, 
+                            booksum_split=booksum_split)
     gen = LongContextGenerator(model_id=model_id)
     evaluator = BookEvaluator()
 
-    # Dataset Alignment
-    aligned_questions, all_chapters = prep.align_questions_to_chapters(book_bid, max_questions=max_questions)
+    aligned_questions, all_chapters = prep.align_questions_to_chapters(book_bid, 
+                                                                       max_questions=max_questions)
 
     if not all_chapters:
         print(f"[error] No chapters found for bid={book_bid}. Try a different --book_bid or increase --booksum_split.")
@@ -67,21 +63,17 @@ def run_experiment(
         print(f"[error] No aligned questions found for bid={book_bid}. Increase --narrative_split or try another --book_bid.")
         return 1
 
-    # Optional retrieval setup
     retriever = None
     if use_retriever:
-        print("Building retriever index...")
+        print("\nBuilding retriever index...\n")
 
-        # IMPORTANT: force embedder to CPU so it doesn't consume GPU memory
         embedder = BookEmbedder()
         try:
             embedder.device = "cpu"
             embedder.model = embedder.model.to("cpu")
         except Exception:
-            # SentenceTransformer usually supports .to("cpu"), but if not, ignore
             pass
 
-        # If torch exists + CUDA is available, free any cached VRAM
         try:
             import torch
             if torch.cuda.is_available():
@@ -94,7 +86,7 @@ def run_experiment(
 
     results_all = []
     spoiler_flags = 0
-    spoiler_denom = 0  # only count spoiler rate over answerable examples
+    spoiler_denom = 0
 
     # Run loop
     for i, entry in enumerate(aligned_questions, start=1):
@@ -102,7 +94,6 @@ def run_experiment(
         k = entry.get("max_chapter_idx", -1)
         unanswerable = bool(entry.get("unanswerable", False)) or (k == -1)
 
-        # Decide allowed/future context
         if unanswerable:
             max_allowed_k = 0
             future_context = []
@@ -112,24 +103,18 @@ def run_experiment(
             future_context = all_chapters[k + 1:] if (k + 1) < len(all_chapters) else []
             gold = entry["gold_answer"]
 
-        # Build safe context
         if retriever is not None:
             safe_ids = retriever.retrieve_safe_context(q, max_allowed_k, top_k=top_k)
             safe_context = [all_chapters[cid] for cid in safe_ids] if safe_ids else [all_chapters[0]]
         else:
-            # Hard boundary baseline (NO RETRIEVAL) - still cap to avoid OOM
             safe_context = all_chapters[:max_allowed_k + 1] if max_allowed_k >= 0 else [all_chapters[0]]
 
-        # Cap context to prevent CUDA OOM from very long prompts
         safe_context = _cap_context_by_chars(safe_context, max_chars=max_context_chars)
 
-        # Generation
         ans = gen.generate_answer(q, safe_context, max_new_tokens=max_new_tokens)
 
-        # Evaluation
         metrics = evaluator.evaluate(ans, gold, future_context)
 
-        # If unanswerable, spoiler check is meaningless
         if unanswerable:
             metrics["spoiler_violation"] = False
 
@@ -140,18 +125,18 @@ def run_experiment(
             if metrics.get("spoiler_violation"):
                 spoiler_flags += 1
 
-        print(f"\n--- Example {i} ---")
-        print(f"k={k} | unanswerable={unanswerable} | Spoiler Safe: {not metrics['spoiler_violation']} | ROUGE-L={metrics['rougeL']:.4f}")
+        print(f"\nExample {i}\n")
+        print(f"k = {k} | unanswerable = {unanswerable} | Spoiler Safe: {not metrics['spoiler_violation']} | ROUGE-L = {metrics['rougeL']:.4f}\n")
         print(f"Q: {q}")
-        print(f"A: {ans}")
+        print(f"A: {ans}\n")
         if retriever is not None:
-            print(f"safe_ids: {safe_ids}")
+            #print(f"safe_ids: {safe_ids}")
+            print(f"")
 
-    # Summary
     avg_rouge = sum(r["rougeL"] for r in results_all) / len(results_all)
     spoiler_rate = (spoiler_flags / spoiler_denom) if spoiler_denom > 0 else 0.0
 
-    print("\n=== Summary ===")
+    print("\nSummary\n")
     print(f"book_bid: {book_bid}")
     print(f"num_examples: {len(results_all)}")
     print(f"avg_rougeL: {avg_rouge:.4f}")
@@ -160,7 +145,6 @@ def run_experiment(
     print(f"unanswerable_examples: {len(results_all) - spoiler_denom}")
 
     return 0
-
 
 def main():
     parser = argparse.ArgumentParser(description="Per-chapter BookQA experiment runner")
@@ -171,7 +155,6 @@ def main():
     parser.add_argument("--model_id", type=str, default="Qwen/Qwen2.5-3B-Instruct")
     parser.add_argument("--max_new_tokens", type=int, default=64)
 
-    # NEW: retrieval + context caps
     parser.add_argument("--use_retriever", action="store_true", help="Use FAISS retriever (recommended)")
     parser.add_argument("--top_k", type=int, default=2, help="Top-k retrieved chapters")
     parser.add_argument("--max_context_chars", type=int, default=12000, help="Cap total context chars to avoid OOM")
@@ -185,12 +168,11 @@ def main():
         max_questions=args.max_questions,
         model_id=args.model_id,
         max_new_tokens=args.max_new_tokens,
-        use_retriever=args.use_retriever,   # default False unless flag passed
+        use_retriever=args.use_retriever,
         top_k=args.top_k,
         max_context_chars=args.max_context_chars,
     )
     sys.exit(rc)
-
 
 if __name__ == "__main__":
     main()

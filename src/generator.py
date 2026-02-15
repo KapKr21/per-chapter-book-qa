@@ -9,9 +9,9 @@ class LongContextGenerator:
     def __init__(
         self,
         model_id="Qwen/Qwen2.5-3B-Instruct",
-        load_in_4bit=False,                 # for 3B, keep False unless needed
+        load_in_4bit=False,
         try_flash_attention_2=False,
-        attn_implementation="eager",        # IMPORTANT: lowers peak memory vs sdpa on some GPUs
+        attn_implementation="eager",
     ):
         self.model_id = model_id
 
@@ -31,12 +31,11 @@ class LongContextGenerator:
 
         model_kwargs = dict(
             device_map="auto",
-            dtype=torch.float16,      # ✅ FIXED (was dtype=...)
+            dtype=torch.float16,
         )
         if quantization_config is not None:
             model_kwargs["quantization_config"] = quantization_config
 
-        # Try flash_attention_2 if requested, else eager (safer on memory)
         if try_flash_attention_2:
             try:
                 self.model = AutoModelForCausalLM.from_pretrained(
@@ -44,9 +43,9 @@ class LongContextGenerator:
                     attn_implementation="flash_attention_2",
                     **model_kwargs,
                 )
-                print("✅ Using FlashAttention2.")
+                print("Using FlashAttention2.")
             except Exception as e:
-                print(f"⚠️ FlashAttention2 unavailable, falling back. Reason: {type(e).__name__}: {e}")
+                print(f"FlashAttention2 unavailable, falling back. Reason: {type(e).__name__}: {e}")
                 self.model = AutoModelForCausalLM.from_pretrained(
                     model_id,
                     attn_implementation=attn_implementation,
@@ -67,7 +66,12 @@ class LongContextGenerator:
         gc.top_p = None
         gc.top_k = None
 
-    def generate_answer(self, question, context_chunks, max_new_tokens=80, max_input_tokens=1024):
+    def generate_answer(self, 
+                        question, 
+                        context_chunks, 
+                        max_new_tokens=80, 
+                        max_input_tokens=1024):
+
         context = "\n\n".join(context_chunks)
 
         prompt = (
@@ -83,7 +87,6 @@ class LongContextGenerator:
         input_ids = inputs["input_ids"].to(self.model.device)
         attn = inputs["attention_mask"].to(self.model.device)
 
-        # ✅ HARD CAP to avoid KV-cache OOM
         if input_ids.shape[1] > max_input_tokens:
             input_ids = input_ids[:, -max_input_tokens:]
             attn = attn[:, -max_input_tokens:]
@@ -100,6 +103,5 @@ class LongContextGenerator:
                 no_repeat_ngram_size=6,
             )
 
-        # ✅ Decode only new tokens (prevents prompt echo)
         new_tokens = outputs[0, input_ids.shape[1]:]
         return self.tokenizer.decode(new_tokens, skip_special_tokens=True).strip()

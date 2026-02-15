@@ -1,4 +1,3 @@
-# src/retriever.py
 import faiss
 import numpy as np
 
@@ -6,7 +5,7 @@ class ChapterRestrictedRetriever:
     def __init__(self, embedder):
         self.embedder = embedder
         self.index = None
-        self.chapter_map = []  # maps faiss row -> chapter_id
+        self.chapter_map = []
 
     def build_index(self, chapters):
         """
@@ -30,12 +29,10 @@ class ChapterRestrictedRetriever:
         query_vec = self.embedder.embed_query(question)
         query_vec = np.array(query_vec).astype("float32")
 
-        # Search more than needed then filter.
         distances, indices = self.index.search(query_vec, self.index.ntotal)
 
         safe_ids = []
         for idx in indices[0]:
-            # FAISS can return -1 in some edge cases
             if idx < 0:
                 continue
 

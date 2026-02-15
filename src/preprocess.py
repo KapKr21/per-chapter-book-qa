@@ -1,11 +1,11 @@
-# src/preprocess.py
 from datasets import load_dataset
 
 IDK_FALLBACK = "I don't know based on the given text."
 
-
 class BookPreprocessor:
-    def __init__(self, narrative_split="train[:2000]", booksum_split="train[:2000]"):
+    def __init__(self, 
+                 narrative_split="train[:2000]", 
+                 booksum_split="train[:2000]"):
         """
         Pascal-friendly: default to slices so you can iterate fast.
         Increase to full train later.
@@ -44,7 +44,6 @@ class BookPreprocessor:
             max_chapter_idx = -1, unanswerable=True, gold_answer=IDK_FALLBACK
         """
 
-        # ---------- 1) Match BookSum chapters ----------
         def _match_bid(x):
             b = x.get("bid")
             return b is not None and str(b) == str(book_bid)
@@ -63,7 +62,6 @@ class BookPreprocessor:
         if not chapters_text:
             raise ValueError(f"Chapters exist for bid={book_bid}, but chapter text is empty.")
 
-        # ---------- 2) Try title-based matching (if title exists and looks usable) ----------
         book_title = (book_chapters[0].get("title") or "").strip()
         book_questions = None
 
@@ -78,10 +76,8 @@ class BookPreprocessor:
                 if len(filtered) > 0:
                     book_questions = filtered
             except Exception:
-                # if schema mismatch or filter fails, fall back to scanning
                 book_questions = None
 
-        # ---------- 3) Build aligned_data (with fallback scanning) ----------
         aligned_data = []
 
         def _extract_question_text(ex):
@@ -112,7 +108,8 @@ class BookPreprocessor:
                 })
                 return
 
-            k = self._find_first_revealing_chapter(answer_text, chapters_text)
+            k = self._find_first_revealing_chapter(answer_text, 
+                                                   chapters_text)
             if k is None:
                 aligned_data.append({
                     "question": q_text,
@@ -128,7 +125,6 @@ class BookPreprocessor:
                     "unanswerable": False
                 })
 
-        # 3a) If title match worked, iterate it; otherwise scan entire slice
         source_iter = book_questions if book_questions is not None else self.narrative_qa
 
         for ex in source_iter:

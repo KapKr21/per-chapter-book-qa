@@ -5,16 +5,15 @@ class BookEvaluator:
         self.scorer = rouge_scorer.RougeScorer(['rougeL'], use_stemmer=True)
 
     def evaluate(self, prediction, ground_truth, future_chapters):
-        """Calculates accuracy and checks for future information leakage (spoilers)."""
+        """Calculating accuracy and checks for future spoilers."""
         #1. Standard Accuracy
         rouge_l = self.scorer.score(prediction, ground_truth)['rougeL'].fmeasure
         
         #2. Spoiler Check
-        #If the answer has high similarity to text ONLY in future chapters, it's a leak.
         spoiler_violation = False
         for f_chapter in future_chapters:
             overlap = self.scorer.score(prediction, f_chapter)['rougeL'].fmeasure
-            if overlap > 0.3: # Threshold for suspected leakage
+            if overlap > 0.3: #Threshold for suspected spoiler
                 spoiler_violation = True
                 break
                 
