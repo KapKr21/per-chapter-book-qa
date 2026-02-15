@@ -134,13 +134,12 @@ def run_experiment(
             if metrics.get("spoiler_violation"):
                 spoiler_flags += 1
 
-        print(f"Example {i}\n")
-        print(f"k = {k} | unanswerable = {unanswerable} | Spoiler Safe: {not metrics['spoiler_violation']} | ROUGE-L = {metrics['rougeL']:.4f}\n")
+        print(f"\nExample {i}\n")
+        print(f"k = {k} | Unanswerable = {unanswerable} | Spoiler Safe: {not metrics['spoiler_violation']} | ROUGE-L = {metrics['rougeL']:.4f}\n")
         print(f"Q: {q}")
-        print(f"A: {ans}\n")
+        print(f"A: {ans}")
         if retriever is not None:
-            # print(f"safe_ids: {safe_ids}")
-            print(f"")
+            print(f"\n{safe_context[0][:400]}")
 
     avg_rouge = sum(r["rougeL"] for r in results_all) / len(results_all)
     spoiler_rate = (spoiler_flags / spoiler_denom) if spoiler_denom > 0 else 0.0
