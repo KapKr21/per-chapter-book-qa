@@ -8,7 +8,7 @@ class BookPreprocessor:
         Increase to full train later.
         """
         print("Loading datasets...")
-        self.narrative_qa = load_dataset("google/narrativeqa", split=narrative_split)
+        self.narrative_qa = load_dataset("narrativeqa", split=narrative_split)
         self.booksum = load_dataset("kmfoda/booksum", split=booksum_split)
 
     def list_available_bids(self, limit=20):
