@@ -3,19 +3,13 @@ from datasets import load_dataset
 IDK_FALLBACK = "I don't know based on the given text."
 
 class BookPreprocessor:
-    def __init__(self, 
-                 narrative_split="train[:2000]", 
-                 booksum_split="train[:2000]"):
-        """
-        Pascal-friendly: default to slices so you can iterate fast.
-        Increase to full train later.
-        """
+    def __init__(self, narrative_split="train[:2000]", booksum_split="train[:2000]"):
         print("Loading datasets...")
+        # NOTE: your current code uses "narrativeqa" (not "google/narrativeqa")
         self.narrative_qa = load_dataset("narrativeqa", split=narrative_split)
         self.booksum = load_dataset("kmfoda/booksum", split=booksum_split)
 
     def list_available_bids(self, limit=20):
-        """Return bids that have chapter text in the loaded BookSum slice."""
         bids = []
         seen = set()
         for ex in self.booksum:
@@ -29,19 +23,18 @@ class BookPreprocessor:
                 break
         return bids
 
-    def align_questions_to_chapters(self, book_bid, max_questions=50):
+    def align_questions_to_chapters(self, book_bid, max_questions=50, require_match=False):
         """
         Align NarrativeQA questions to BookSum chapters.
 
-        IMPORTANT:
-        - NarrativeQA IDs generally do NOT match BookSum bids.
-        - Title matching may or may not work depending on fields present in your BookSum slice.
-        - This function will:
-            1) try title matching if possible
-            2) otherwise (or if it yields nothing) fall back to scanning NarrativeQA slice
-               until it collects max_questions.
-        - Unlocatable / missing-answer pairs become:
-            max_chapter_idx = -1, unanswerable=True, gold_answer=IDK_FALLBACK
+        Matching order:
+          1) NarrativeQA document id == book_bid  (best if it exists)
+          2) NarrativeQA document title == BookSum title
+          3) Fallback: scan entire NarrativeQA slice (warn)
+
+        require_match:
+          - If True, raise when (1) and (2) fail.
+          - If False, allow fallback scanning (default).
         """
 
         def _match_bid(x):
@@ -65,29 +58,53 @@ class BookPreprocessor:
         book_title = (book_chapters[0].get("title") or "").strip()
         book_questions = None
 
-        def _match_docid(ex):
+        # ---------- 1) Try doc-id match ----------
+        def _get_doc_id(ex):
+            # NarrativeQA variants store this differently; try several common shapes
             doc = ex.get("document", {}) or {}
-            return str(doc.get("id", "")).strip() == str(book_bid)
+            for key in ("id", "doc_id", "document_id", "story_id"):
+                if key in doc and doc[key] is not None:
+                    return str(doc[key]).strip()
+            # sometimes it's at top-level
+            for key in ("document_id", "doc_id", "story_id"):
+                if key in ex and ex[key] is not None:
+                    return str(ex[key]).strip()
+            return ""
+
+        bid_str = str(book_bid).strip()
 
         try:
-            filtered = self.narrative_qa.filter(_match_docid)
+            filtered = self.narrative_qa.filter(lambda ex: _get_doc_id(ex) == bid_str)
             if len(filtered) > 0:
                 book_questions = filtered
         except Exception:
-            pass
+            book_questions = None
 
-        if book_title:
-            def _match_nqa(ex):
+        # ---------- 2) Try title match ----------
+        if book_questions is None and book_title:
+            def _match_title(ex):
                 doc = ex.get("document", {}) or {}
-                doc_title = (doc.get("title") or "").strip().lower()
+                doc_title = (doc.get("title") or doc.get("name") or "").strip().lower()
                 return doc_title == book_title.lower()
 
             try:
-                filtered = self.narrative_qa.filter(_match_nqa)
+                filtered = self.narrative_qa.filter(_match_title)
                 if len(filtered) > 0:
                     book_questions = filtered
             except Exception:
                 book_questions = None
+
+        # ---------- 3) Decide what to do if still no match ----------
+        if book_questions is None:
+            msg = (
+                f"No NarrativeQA questions matched this book (bid={book_bid}).\n"
+                f"BookSum title was: '{book_title}'.\n"
+                f"Falling back to scanning NarrativeQA slice (likely mismatched Q/A)."
+            )
+            if require_match:
+                raise ValueError(msg)
+            else:
+                print("[warn]", msg)
 
         aligned_data = []
 
@@ -119,36 +136,30 @@ class BookPreprocessor:
                 })
                 return
 
-            k = self._find_first_revealing_chapter(answer_text, 
-                                                   chapters_text)
+            k = self._find_first_revealing_chapter(answer_text, chapters_text)
             if k is None:
-                # Skip unrelated / unlocatable Q/A so your experiment isn't dominated by IDK
-                return
-            aligned_data.append({
-                "question": q_text,
-                "gold_answer": answer_text,
-                "max_chapter_idx": k,
-                "unanswerable": False
-            })
+                aligned_data.append({
+                    "question": q_text,
+                    "gold_answer": IDK_FALLBACK,
+                    "max_chapter_idx": -1,
+                    "unanswerable": True
+                })
+            else:
+                aligned_data.append({
+                    "question": q_text,
+                    "gold_answer": answer_text,
+                    "max_chapter_idx": k,
+                    "unanswerable": False
+                })
 
-        if book_questions is None:
-            raise ValueError(
-                f"No NarrativeQA questions matched this book (bid={book_bid}).\n"
-                f"BookSum title was: '{book_title}'.\n"
-                f"This means your BookSum book is not aligned to NarrativeQA in this slice.\n"
-                f"Pick a different bid or increase --narrative_split to find matches."
-            )
-        
-        source_iter = book_questions
+        source_iter = book_questions if book_questions is not None else self.narrative_qa
 
         for ex in source_iter:
             q_text = _extract_question_text(ex)
             if not q_text:
                 continue
-
             answer_text = _extract_answer_text(ex)
             _add_example(q_text, answer_text)
-
             if len(aligned_data) >= max_questions:
                 break
 
@@ -161,10 +172,6 @@ class BookPreprocessor:
         return aligned_data, chapters_text
 
     def _find_first_revealing_chapter(self, answer, chapters):
-        """
-        Heuristic: find earliest chapter containing enough keyword evidence from the answer.
-        Returns chapter index, or None if answer cannot be located in the book.
-        """
         kws = [w.lower() for w in str(answer).split() if len(w) > 3]
         kws = kws[:8]
         if not kws:
@@ -175,5 +182,4 @@ class BookPreprocessor:
             hits = sum(1 for k in kws[:3] if k in t)
             if hits >= 2:
                 return idx
-
         return None
