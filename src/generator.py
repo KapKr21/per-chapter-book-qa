@@ -1,82 +1,38 @@
-# src/generator.py
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
-from transformers import BitsAndBytesConfig
-
-from transformers import GenerationConfig
+from transformers import AutoTokenizer, AutoModelForCausalLM
 
 class LongContextGenerator:
-    def __init__(
-        self,
-        model_id="Qwen/Qwen2.5-3B-Instruct",
-        load_in_4bit=False,
-        try_flash_attention_2=False,
-        attn_implementation="eager",
-    ):
+    def __init__(self, model_id: str = "Qwen/Qwen2.5-3B-Instruct"):
         self.model_id = model_id
-
-        quantization_config = None
-        if load_in_4bit:
-            quantization_config = BitsAndBytesConfig(
-                load_in_4bit=True,
-                bnb_4bit_compute_dtype=torch.float16,
-                bnb_4bit_quant_type="nf4",
-            )
-
         print(f"Loading generator: {model_id}")
+
         self.tokenizer = AutoTokenizer.from_pretrained(model_id, use_fast=True)
-
-        if self.tokenizer.pad_token is None and self.tokenizer.eos_token is not None:
-            self.tokenizer.pad_token = self.tokenizer.eos_token
-
-        model_kwargs = dict(
+        self.model = AutoModelForCausalLM.from_pretrained(
+            model_id,
             device_map="auto",
-            dtype=torch.float16,
+            torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
         )
-        if quantization_config is not None:
-            model_kwargs["quantization_config"] = quantization_config
-
-        if try_flash_attention_2:
-            try:
-                self.model = AutoModelForCausalLM.from_pretrained(
-                    model_id,
-                    attn_implementation="flash_attention_2",
-                    **model_kwargs,
-                )
-                print("Using FlashAttention2.")
-            except Exception as e:
-                print(f"FlashAttention2 unavailable, falling back. Reason: {type(e).__name__}: {e}")
-                self.model = AutoModelForCausalLM.from_pretrained(
-                    model_id,
-                    attn_implementation=attn_implementation,
-                    **model_kwargs,
-                )
-        else:
-            self.model = AutoModelForCausalLM.from_pretrained(
-                model_id,
-                attn_implementation=attn_implementation,
-                **model_kwargs,
-            )
-
         self.model.eval()
 
-        gc = self.model.generation_config
-        gc.do_sample = False
-        gc.temperature = None
-        gc.top_p = None
-        gc.top_k = None
+        # Some tokenizers/models don't set pad_token_id; make it safe for generate()
+        if self.tokenizer.pad_token_id is None:
+            self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
 
-    def generate_answer(self, question, context_chunks, max_new_tokens=80, max_input_tokens=2048):
-        context = "\n\n".join(context_chunks)
+    def generate_answer(
+        self,
+        question: str,
+        context_chunks: list[str],
+        max_new_tokens: int = 64,
+        max_input_tokens: int = 2048,
+    ) -> str:
+        context = "\n\n".join([c for c in context_chunks if c and str(c).strip()])
 
         system_msg = (
             "You are a spoiler-free assistant.\n"
             "Answer ONLY using the provided context.\n"
-            "If the answer is not in the context, say exactly:\n"
-            "\"I don't know based on the given text.\"\n"
-            "Keep the answer to one short sentence."
+            f'If the answer is not in the context, say exactly: "{IDK_FALLBACK}"\n'
+            "Keep the answer short."
         )
-
         user_msg = f"CONTEXT:\n{context}\n\nQUESTION:\n{question}"
 
         messages = [
@@ -84,37 +40,56 @@ class LongContextGenerator:
             {"role": "user", "content": user_msg},
         ]
 
-        input_ids = self.tokenizer.apply_chat_template(
+        # Qwen instruct models prefer chat template
+        enc = self.tokenizer.apply_chat_template(
             messages,
             add_generation_prompt=True,
             return_tensors="pt",
-        ).to(self.model.device)
+        )
 
+        # apply_chat_template may return a Tensor OR a BatchEncoding/dict
+        if isinstance(enc, torch.Tensor):
+            input_ids = enc
+            attention_mask = None
+        else:
+            input_ids = enc["input_ids"]
+            attention_mask = enc.get("attention_mask", None)
+
+        input_ids = input_ids.to(self.model.device)
+        if attention_mask is not None:
+            attention_mask = attention_mask.to(self.model.device)
+
+        # Truncate from the LEFT to keep the most recent content (context/question)
         if input_ids.shape[1] > max_input_tokens:
             input_ids = input_ids[:, -max_input_tokens:]
+            if attention_mask is not None:
+                attention_mask = attention_mask[:, -max_input_tokens:]
+
+        gen_kwargs = dict(
+            max_new_tokens=max_new_tokens,
+            do_sample=False,
+            repetition_penalty=1.1,
+            no_repeat_ngram_size=6,
+            eos_token_id=self.tokenizer.eos_token_id,
+            pad_token_id=self.tokenizer.pad_token_id,
+        )
 
         with torch.inference_mode():
-            outputs = self.model.generate(
+            out = self.model.generate(
                 input_ids=input_ids,
-                max_new_tokens=max_new_tokens,
-                do_sample=False,
-                repetition_penalty=1.1,
-                no_repeat_ngram_size=6,
-                eos_token_id=self.tokenizer.eos_token_id,
-                pad_token_id=self.tokenizer.pad_token_id,
+                attention_mask=attention_mask,
+                **gen_kwargs,
             )
 
-        new_tokens = outputs[0, input_ids.shape[1]:]
+        # Decode only NEW tokens (prevents prompt-echo looking like hallucination)
+        new_tokens = out[0, input_ids.shape[1]:]
         ans = self.tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
 
-        # --- grounding gate (cheap but effective) ---
-        if ans and "I don't know based on the given text." not in ans:
-            # if NONE of the non-trivial answer words appear in context, force IDK
-            ctx = context.lower()
-            toks = [t.strip(".,!?;:()[]\"'").lower() for t in ans.split()]
-            toks = [t for t in toks if len(t) >= 5]
-            supported = any(t in ctx for t in toks[:8])
-            if not supported:
-                ans = "I don't know based on the given text."
+        # Hard clamp: if model includes the fallback plus other text, keep only fallback
+        if IDK_FALLBACK in ans:
+            return IDK_FALLBACK
 
         return ans
+
+# Keep this in generator.py so generator can reference it
+IDK_FALLBACK = "I don't know based on the given text."
