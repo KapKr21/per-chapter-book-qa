@@ -111,19 +111,14 @@ class BookPreprocessor:
             k = self._find_first_revealing_chapter(answer_text, 
                                                    chapters_text)
             if k is None:
-                aligned_data.append({
-                    "question": q_text,
-                    "gold_answer": IDK_FALLBACK,
-                    "max_chapter_idx": -1,
-                    "unanswerable": True
-                })
-            else:
-                aligned_data.append({
-                    "question": q_text,
-                    "gold_answer": answer_text,
-                    "max_chapter_idx": k,
-                    "unanswerable": False
-                })
+                # Skip unrelated / unlocatable Q/A so your experiment isn't dominated by IDK
+                return
+            aligned_data.append({
+                "question": q_text,
+                "gold_answer": answer_text,
+                "max_chapter_idx": k,
+                "unanswerable": False
+            })
 
         source_iter = book_questions if book_questions is not None else self.narrative_qa
 

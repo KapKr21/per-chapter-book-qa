@@ -66,42 +66,55 @@ class LongContextGenerator:
         gc.top_p = None
         gc.top_k = None
 
-    def generate_answer(self, 
-                        question, 
-                        context_chunks, 
-                        max_new_tokens=80, 
-                        max_input_tokens=1024):
-
+    def generate_answer(self, question, context_chunks, max_new_tokens=80, max_input_tokens=2048):
         context = "\n\n".join(context_chunks)
 
-        prompt = (
+        system_msg = (
             "You are a spoiler-free assistant.\n"
             "Answer ONLY using the provided context.\n"
-            "If the answer is not in the context, say: \"I don't know based on the given text.\".\n\n"
-            f"CONTEXT:\n{context}\n\n"
-            f"QUESTION: {question}\n"
-            "ANSWER:"
+            "If the answer is not in the context, say exactly:\n"
+            "\"I don't know based on the given text.\"\n"
+            "Keep the answer to one short sentence."
         )
 
-        inputs = self.tokenizer(prompt, return_tensors="pt", truncation=False)
-        input_ids = inputs["input_ids"].to(self.model.device)
-        attn = inputs["attention_mask"].to(self.model.device)
+        user_msg = f"CONTEXT:\n{context}\n\nQUESTION:\n{question}"
+
+        messages = [
+            {"role": "system", "content": system_msg},
+            {"role": "user", "content": user_msg},
+        ]
+
+        input_ids = self.tokenizer.apply_chat_template(
+            messages,
+            add_generation_prompt=True,
+            return_tensors="pt",
+        ).to(self.model.device)
 
         if input_ids.shape[1] > max_input_tokens:
             input_ids = input_ids[:, -max_input_tokens:]
-            attn = attn[:, -max_input_tokens:]
 
         with torch.inference_mode():
             outputs = self.model.generate(
                 input_ids=input_ids,
-                attention_mask=attn,
                 max_new_tokens=max_new_tokens,
                 do_sample=False,
+                repetition_penalty=1.1,
+                no_repeat_ngram_size=6,
                 eos_token_id=self.tokenizer.eos_token_id,
                 pad_token_id=self.tokenizer.pad_token_id,
-                repetition_penalty=1.15,
-                no_repeat_ngram_size=6,
             )
 
         new_tokens = outputs[0, input_ids.shape[1]:]
-        return self.tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
+        ans = self.tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
+
+        # --- grounding gate (cheap but effective) ---
+        if ans and "I don't know based on the given text." not in ans:
+            # if NONE of the non-trivial answer words appear in context, force IDK
+            ctx = context.lower()
+            toks = [t.strip(".,!?;:()[]\"'").lower() for t in ans.split()]
+            toks = [t for t in toks if len(t) >= 5]
+            supported = any(t in ctx for t in toks[:8])
+            if not supported:
+                ans = "I don't know based on the given text."
+
+        return ans
