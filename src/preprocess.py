@@ -40,7 +40,7 @@ class BookPreprocessor:
     ):
         print("Loading datasets...")
         # NOTE: LiteraryQA downloads and preprocesses Gutenberg texts; requires extra deps per dataset card. :contentReference[oaicite:2]{index=2}
-        self.ds = load_dataset(dataset_name, split=narrative_split)
+        self.ds = load_dataset(dataset_name, split=narrative_split, trust_remote_code=True)
 
         self.chunk_chars = int(chunk_chars)
         self.chunk_overlap = int(chunk_overlap)
