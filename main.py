@@ -223,7 +223,7 @@ def run_experiment(
         if retriever is not None:
             print(f"\n[debug] safe_ids: {safe_ids}")
             print("\n[debug] CONTEXT SNIPPET:")
-            print(f"\n{safe_context[0][:400]}")
+            print(f"\n{safe_context[0][:1000]}")
 
     avg_rouge = sum(r["rougeL"] for r in results_all) / len(results_all)
 

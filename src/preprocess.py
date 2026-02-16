@@ -120,7 +120,15 @@ class BookPreprocessor:
                 "unanswerable": False
             })
 
-        source_iter = book_questions if book_questions is not None else self.narrative_qa
+        if book_questions is None:
+            raise ValueError(
+                f"No NarrativeQA questions matched this book (bid={book_bid}).\n"
+                f"BookSum title was: '{book_title}'.\n"
+                f"This means your BookSum book is not aligned to NarrativeQA in this slice.\n"
+                f"Pick a different bid or increase --narrative_split to find matches."
+            )
+        
+        source_iter = book_questions
 
         for ex in source_iter:
             q_text = _extract_question_text(ex)
