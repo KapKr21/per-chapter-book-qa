@@ -1,254 +1,193 @@
-# src/preprocess.py
-
 import re
+from typing import List, Tuple, Dict, Any, Optional
+
+import numpy as np
 from datasets import load_dataset
+
+from src.embedder import BookEmbedder
 
 IDK_FALLBACK = "I don't know based on the given text."
 
 
+def _norm_ws(s: str) -> str:
+    return re.sub(r"\s+", " ", (s or "")).strip()
+
+
+def _norm_lower(s: str) -> str:
+    return _norm_ws(s).lower()
+
+
 class BookPreprocessor:
-    def __init__(self, narrative_split="train[:2000]", booksum_split="train[:2000]"):
+    """
+    LiteraryQA-based preprocessor.
+
+    LiteraryQA item schema (key parts):
+      - document_id: str
+      - title: str
+      - text: str  (full book text)
+      - qas: list[{question: str, answers: list[str], ...}]
+    Source: HuggingFace dataset card. :contentReference[oaicite:1]{index=1}
+    """
+
+    def __init__(
+        self,
+        narrative_split: str = "train",   # kept for compatibility with your main.py arg name
+        booksum_split: str = "train",     # kept for compatibility (unused here)
+        dataset_name: str = "sapienzanlp/LiteraryQA",
+        chunk_chars: int = 6000,
+        chunk_overlap: int = 400,
+        semantic_fallback: bool = True,
+    ):
         print("Loading datasets...")
-        # Keep your dataset names consistent with your environment:
-        # - Some environments use "google/narrativeqa", others "narrativeqa"
-        # Use the one that works for you.
+        # NOTE: LiteraryQA downloads and preprocesses Gutenberg texts; requires extra deps per dataset card. :contentReference[oaicite:2]{index=2}
+        self.ds = load_dataset(dataset_name, split=narrative_split)
+
+        self.chunk_chars = int(chunk_chars)
+        self.chunk_overlap = int(chunk_overlap)
+        self.semantic_fallback = bool(semantic_fallback)
+
+        # Used only for semantic fallback when answers aren't exact spans
+        self.embedder = BookEmbedder()
         try:
-            self.narrative_qa = load_dataset("google/narrativeqa", split=narrative_split)
+            self.embedder.device = "cpu"
+            self.embedder.model = self.embedder.model.to("cpu")
         except Exception:
-            self.narrative_qa = load_dataset("narrativeqa", split=narrative_split)
+            pass
 
-        self.booksum = load_dataset("kmfoda/booksum", split=booksum_split)
-
-    def list_available_bids(self, limit=20):
-        """Return first N unique BookSum bids with non-empty chapter text."""
-        bids = []
-        seen = set()
-        for ex in self.booksum:
-            bid = ex.get("bid")
-            chapter = ex.get("chapter", "")
-            if bid is None or bid in seen or not chapter:
+    def list_available_bids(self, limit: int = 20) -> List[str]:
+        """For compatibility with your code: returns document_id list."""
+        out, seen = [], set()
+        for ex in self.ds:
+            did = str(ex.get("document_id") or "")
+            if not did or did in seen:
                 continue
-            bids.append(bid)
-            seen.add(bid)
-            if len(bids) >= limit:
+            out.append(did)
+            seen.add(did)
+            if len(out) >= limit:
                 break
-        return bids
-
-    # ----------------------------
-    # NarrativeQA helpers
-    # ----------------------------
-    def _extract_question_text(self, ex) -> str:
-        q = ex.get("question")
-        if isinstance(q, dict):
-            return (q.get("text") or "").strip()
-        return (q or "").strip()
-
-    def _extract_answer_text(self, ex) -> str:
-        answers = ex.get("answers", [])
-        if isinstance(answers, list) and answers:
-            a0 = answers[0]
-            if isinstance(a0, dict):
-                return (a0.get("text") or a0.get("answer") or "").strip()
-            if isinstance(a0, str):
-                return a0.strip()
-        if isinstance(answers, dict):
-            return (answers.get("text") or "").strip()
-        return ""
-
-    def _doc_id(self, ex) -> str:
-        doc = ex.get("document", {}) or {}
-        return str(doc.get("id") or "").strip()
-
-    def _doc_text(self, ex) -> str:
-        doc = ex.get("document", {}) or {}
-        return doc.get("text") or ""
-
-    # ----------------------------
-    # Robust doc matching
-    # ----------------------------
-    def _normalize_ws(self, s: str) -> str:
-        return re.sub(r"\s+", " ", (s or "")).strip()
-
-    def _pick_snippets(self, text: str, n=6, span=180):
-        """
-        Choose a handful of fixed-length snippets from early in chapter 1.
-        Exact snippet hits in NarrativeQA document text are a strong alignment signal.
-        """
-        t = self._normalize_ws(text)
-        if not t:
-            return []
-        if len(t) < span + 20:
-            return [t]
-
-        # Early offsets; stay near the beginning to reduce spoiler risk
-        positions = [0, 250, 650, 1100, 1600, 2200, 3000]
-        snippets = []
-        for p in positions[:n]:
-            if p + span <= len(t):
-                snippets.append(t[p : p + span])
-
-        # unique
-        out = []
-        for s in snippets:
-            if s and s not in out:
-                out.append(s)
         return out
 
-    def _match_nqa_document_by_snippets(self, chapters_text):
+    def _chunk_text(self, text: str) -> List[str]:
         """
-        Return (best_doc_id, best_score, second_doc_id, second_score).
-        Score is number of exact snippet hits in document text.
+        Sequential chunks = "chapters" for your spoiler constraint.
+        Keeps order so 'k' is meaningful.
         """
-        seed = chapters_text[0] if chapters_text else ""
-        snips = self._pick_snippets(seed, n=6, span=180)
-        if not snips:
-            return None, 0, None, 0
+        t = _norm_ws(text)
+        if not t:
+            return [""]
 
-        best_id, best_score = None, -1
-        second_id, second_score = None, -1
+        n = len(t)
+        chunks = []
+        step = max(1, self.chunk_chars - self.chunk_overlap)
 
-        for ex in self.narrative_qa:
-            doc_id = self._doc_id(ex)
-            if not doc_id:
-                continue
-            doc_text = self._doc_text(ex)
-            if not doc_text:
-                continue
+        start = 0
+        while start < n:
+            end = min(n, start + self.chunk_chars)
+            chunks.append(t[start:end])
+            if end == n:
+                break
+            start += step
 
-            doc_text_norm = self._normalize_ws(doc_text)
-            score = sum(1 for s in snips if s and s in doc_text_norm)
+        return chunks
 
-            if score > best_score:
-                second_id, second_score = best_id, best_score
-                best_id, best_score = doc_id, score
-            elif score > second_score:
-                second_id, second_score = doc_id, score
-
-        return best_id, best_score, second_id, second_score
-
-    # ----------------------------
-    # Chapter reveal heuristic (improved)
-    # ----------------------------
-    def _find_first_revealing_chapter(self, answer: str, chapters_text: list[str]):
+    def _find_k_by_exact_answer(self, answers: List[str], chunks: List[str]) -> Optional[int]:
         """
-        Find earliest chapter where answer appears.
-        - Try exact normalized phrase match first (best for names).
-        - Then token overlap heuristic.
+        Return earliest chunk index that contains any answer string (normalized).
         """
-        ans = self._normalize_ws(str(answer)).lower()
-        if not ans:
+        if not answers or not chunks:
             return None
 
-        # 1) exact match (normalized whitespace)
-        for idx, ch in enumerate(chapters_text):
-            t = self._normalize_ws(ch).lower()
-            if ans in t:
-                return idx
-
-        # 2) token overlap heuristic (less strict than your old version)
-        toks = [w for w in re.findall(r"[a-zA-Z']+", ans) if len(w) >= 4]
-        toks = toks[:12]
-        if not toks:
-            return None
-
-        for idx, ch in enumerate(chapters_text):
-            t = self._normalize_ws(ch).lower()
-            hits = sum(1 for w in toks[:8] if w in t)
-            if hits >= 2:
-                return idx
-
+        chunks_norm = [_norm_lower(c) for c in chunks]
+        for a in answers:
+            a_norm = _norm_lower(a)
+            if not a_norm or len(a_norm) < 4:
+                continue
+            # try exact substring match
+            for idx, c in enumerate(chunks_norm):
+                if a_norm in c:
+                    return idx
         return None
 
-    # ----------------------------
-    # Main alignment
-    # ----------------------------
-    def align_questions_to_chapters(self, book_bid: str, max_questions: int = 25):
+    def _find_k_by_semantic_question(self, question: str, chunks: List[str], min_sim: float = 0.20) -> Optional[int]:
         """
-        1) Load BookSum chapters for bid
-        2) Match correct NarrativeQA document using exact snippet hits
-        3) Take questions ONLY from that doc
-        4) Compute max_chapter_idx by locating answer in chapters
+        Fallback when answers are abstractive: pick earliest chunk whose embedding is similar to question.
         """
+        if not question or not chunks:
+            return None
 
-        # BookSum chapters for bid
-        book_chapters = [b for b in self.booksum if str(b.get("bid")) == str(book_bid)]
-        if not book_chapters:
+        q_vec = self.embedder.embed([question])[0]
+        q_vec = q_vec / (np.linalg.norm(q_vec) + 1e-8)
+
+        # embed chunk prefixes (cheap + works well)
+        prefixes = [c[:2000] for c in chunks]
+        c_vecs = self.embedder.embed(prefixes)
+        c_vecs = c_vecs / (np.linalg.norm(c_vecs, axis=1, keepdims=True) + 1e-8)
+
+        sims = (c_vecs @ q_vec)
+        best = int(np.argmax(sims))
+        best_sim = float(sims[best])
+
+        if best_sim < min_sim:
+            return None
+
+        # earliest chunk above threshold (spoiler-safe earliest reveal)
+        for idx, s in enumerate(sims):
+            if float(s) >= min_sim:
+                return idx
+        return best
+
+    def align_questions_to_chapters(self, book_bid: str, max_questions: int = 25) -> Tuple[List[Dict[str, Any]], List[str]]:
+        """
+        Here `book_bid` is treated as LiteraryQA `document_id`.
+        Returns:
+          aligned_questions: [{question, gold_answer, max_chapter_idx, unanswerable}]
+          chapters_text: list[str] (sequential chunks)
+        """
+        # Find the doc
+        ex = None
+        for row in self.ds:
+            if str(row.get("document_id")) == str(book_bid):
+                ex = row
+                break
+
+        if ex is None:
             return [], []
 
-        chapters_text = [c.get("chapter", "") for c in book_chapters if c.get("chapter")]
-        if not chapters_text:
-            return [], []
+        full_text = ex.get("text") or ""
+        chapters_text = self._chunk_text(full_text)
 
-        # Match NarrativeQA doc by snippets
-        best_id, best_score, second_id, second_score = self._match_nqa_document_by_snippets(chapters_text)
+        qas = ex.get("qas") or []
+        aligned = []
 
-        # Require confidence: at least 2 snippet hits
-        if not best_id or best_score < 2:
-            print(f"[warn] Could not confidently match a NarrativeQA document for bid={book_bid}. best_score={best_score}")
-            # Return all as unanswerable (or return [] to force you to pick another bid)
-            aligned = []
-            for ex in self.narrative_qa.select(range(min(max_questions, len(self.narrative_qa)))):
-                q = self._extract_question_text(ex)
-                if not q:
-                    continue
+        for qa in qas[: max_questions]:
+            q = (qa.get("question") or "").strip()
+            answers = qa.get("answers") or []
+            answers = [a.strip() for a in answers if isinstance(a, str) and a.strip()]
+
+            if not q:
+                continue
+
+            # choose first reference answer as gold (keep list for k search)
+            gold = answers[0] if answers else IDK_FALLBACK
+
+            k = self._find_k_by_exact_answer(answers, chapters_text)
+
+            if k is None and self.semantic_fallback:
+                k = self._find_k_by_semantic_question(q, chapters_text)
+
+            if k is None:
                 aligned.append({
                     "question": q,
                     "gold_answer": IDK_FALLBACK,
                     "max_chapter_idx": -1,
-                    "unanswerable": True
-                })
-                if len(aligned) >= max_questions:
-                    break
-            return aligned, chapters_text
-
-        print(f"[info] Matched NarrativeQA document id='{best_id}' for bid={book_bid} (snippet_hits={best_score})")
-        if second_id is not None:
-            print(f"[info] Runner-up id='{second_id}' (snippet_hits={second_score})")
-
-        # Select only QA for matched doc
-        matched = [ex for ex in self.narrative_qa if self._doc_id(ex) == best_id]
-
-        if matched:
-            doc_text = (matched[0].get("document", {}) or {}).get("text", "")
-            print("\n[debug] doc_text_head:\n", doc_text[:300])
-            print("\n[debug] booksum_ch1_head:\n", chapters_text[0][:300])
-
-        if not matched:
-            return [], chapters_text
-
-        aligned_data = []
-        for ex in matched:
-            q_text = self._extract_question_text(ex)
-            if not q_text:
-                continue
-
-            answer_text = self._extract_answer_text(ex)
-
-            if not answer_text:
-                aligned_data.append({
-                    "question": q_text,
-                    "gold_answer": IDK_FALLBACK,
-                    "max_chapter_idx": -1,
-                    "unanswerable": True
+                    "unanswerable": True,
                 })
             else:
-                k = self._find_first_revealing_chapter(answer_text, chapters_text)
-                if k is None:
-                    aligned_data.append({
-                        "question": q_text,
-                        "gold_answer": IDK_FALLBACK,
-                        "max_chapter_idx": -1,
-                        "unanswerable": True
-                    })
-                else:
-                    aligned_data.append({
-                        "question": q_text,
-                        "gold_answer": answer_text,
-                        "max_chapter_idx": k,
-                        "unanswerable": False
-                    })
+                aligned.append({
+                    "question": q,
+                    "gold_answer": gold,
+                    "max_chapter_idx": int(k),
+                    "unanswerable": False,
+                })
 
-            if len(aligned_data) >= max_questions:
-                break
-
-        return aligned_data, chapters_text
+        return aligned, chapters_text
