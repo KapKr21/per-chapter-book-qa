@@ -65,6 +65,17 @@ class BookPreprocessor:
         book_title = (book_chapters[0].get("title") or "").strip()
         book_questions = None
 
+        def _match_docid(ex):
+            doc = ex.get("document", {}) or {}
+            return str(doc.get("id", "")).strip() == str(book_bid)
+
+        try:
+            filtered = self.narrative_qa.filter(_match_docid)
+            if len(filtered) > 0:
+                book_questions = filtered
+        except Exception:
+            pass
+
         if book_title:
             def _match_nqa(ex):
                 doc = ex.get("document", {}) or {}

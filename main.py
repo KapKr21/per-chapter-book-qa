@@ -174,8 +174,14 @@ def run_experiment(
 
         # IMPORTANT: if preprocess says "answerable" but gold isn't supported by safe context,
         # treat as unanswerable. This stops bogus answerables from causing hallucinations.
+        # IMPORTANT: support should be checked against ALL chapters up to k,
+        # not just the retrieved top-k chapters (top_k is too small and will miss evidence).
         if not unanswerable:
-            if not _gold_supported_in_context(gold, safe_context):
+            support_pool = all_chapters[: max_allowed_k + 1] if max_allowed_k >= 0 else [all_chapters[0]]
+            support_pool = [c[:2000] for c in support_pool if c and str(c).strip()]
+            support_pool = _cap_context_by_chars(support_pool, max_chars=max_context_chars)
+
+            if not _gold_supported_in_context(gold, support_pool):
                 unanswerable = True
                 k = -1
                 max_allowed_k = 0
