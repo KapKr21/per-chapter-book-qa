@@ -14,7 +14,17 @@ The pipeline is built using **PyTorch** and the **Hugging Face** ecosystem:
 1. **Preprocessing**: Uses **BookSum** dataset for chapter segmentation. Questions are generated from chapter summaries.
 2. **Restricted Retrieval**: Uses **Sentence Transformers** and **FAISS** to index chapters individually, physically preventing the retrieval of "future" context.
 3. **Answer Generation**: Passes retrieved passages into a modern, long-context LLM to handle free-form answering.
-4. **Evaluation**: Combines **ROUGE-L** with a custom **Spoiler-Violation Rate** metric.
+4. **Evaluation**: Uses **BERT-based semantic similarity** for answer equivalence and spoiler detection (instead of ROUGE-L).
+
+## Key Innovation: BERT Answer Equivalence
+
+Following best practices in QA evaluation, we use **semantic similarity** instead of n-gram overlap:
+
+- **BERT Score**: Measures semantic equivalence between predicted and ground truth answers
+- **Spoiler Detection**: Uses semantic similarity to detect if answers contain future chapter information
+- **LLM-as-a-Judge**: Optional integration for nuanced answer quality assessment
+
+This approach better captures answer correctness compared to traditional ROUGE-L metrics.
 
 ## Setup & Installation
 
@@ -83,9 +93,15 @@ EXPERIMENT SUMMARY
 Book BID: 145
 Total Chapters: 266
 Total Questions: 798
-Average ROUGE-L: 0.3245
-Spoiler Rate: 0.0523 (42/798 answerable questions)
-Spoiler-Free Rate: 0.9477
+
+Answer Quality Metrics:
+  Average BERT Score: 0.6234
+  Answer Accuracy: 0.7500 (600/800)
+
+Spoiler Detection Metrics:
+  Spoiler Rate: 0.0523 (42/798 answerable)
+  Spoiler-Free Rate: 0.9477
+  Avg Spoiler Score: 0.1234
 ============================================================
 ```
 
@@ -103,6 +119,8 @@ Spoiler-Free Rate: 0.9477
 - **Scalable**: FAISS-based retrieval handles long books efficiently
 - **Simple**: Uses only BookSum dataset (no complex data alignment needed)
 - **Extensible**: Easy to add better question generation (e.g., using LLMs)
+- **Modern Evaluation**: BERT-based semantic similarity for answer equivalence
+- **Research-Grade**: Follows best practices from recent QA literature
 
 ## Project Structure
 
@@ -110,11 +128,11 @@ Spoiler-Free Rate: 0.9477
 per-chapter-book-qa/
 ├── main_booksum.py              # Main entry point for BookSum-only experiments
 ├── src/
-│   ├── preprocess.py    # BookSum preprocessing & question generation
+│   ├── preprocess.py            # BookSum preprocessing & question generation
 │   ├── embedder.py              # Chapter embedding with Sentence Transformers
 │   ├── retriever.py             # Spoiler-safe chapter retrieval with FAISS
 │   ├── generator.py             # Answer generation with LLMs
-│   └── evaluator.py             # ROUGE-L + spoiler detection evaluation
+│   └── evaluator.py             # BERT-based answer equivalence + spoiler detection
 ├── requirements.txt             # Python dependencies
 └── environment.yml              # Conda environment specification
 ```

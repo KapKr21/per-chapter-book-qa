@@ -139,7 +139,7 @@ def run_experiment(
         ans = gen.generate_answer(q, safe_context, max_new_tokens=max_new_tokens)
 
         # Evaluate
-        metrics = evaluator.evaluate(ans, gold, future_context)
+        metrics = evaluator.evaluate(ans, gold, future_context, question=q)
 
         if unanswerable:
             metrics["spoiler_violation"] = False
@@ -154,15 +154,15 @@ def run_experiment(
         # Print progress
         if i % 5 == 0 or i <= 3:
             print(f"Example {i}/{len(aligned_questions)}")
-            print(f"  Chapter: {k+1} | Spoiler-Safe: {not metrics['spoiler_violation']} | ROUGE-L: {metrics['rougeL']:.4f}")
+            print(f"  Chapter: {k+1} | Spoiler-Safe: {not metrics['spoiler_violation']}")
+            print(f"  BERT Score: {metrics['bert_score']:.4f} | Answer Correct: {metrics['answer_equivalent']}")
             print(f"  Q: {q[:80]}...")
             print(f"  A: {ans[:100]}...")
             print()
 
-    # Summary
-    avg_rouge = sum(r["rougeL"] for r in results_all) / len(results_all)
-    spoiler_rate = (spoiler_flags / spoiler_denom) if spoiler_denom > 0 else 0.0
-
+    # Summary - compute aggregate metrics
+    aggregate_metrics = evaluator.compute_aggregate_metrics(results_all)
+    
     print("\n" + "="*60)
     print("EXPERIMENT SUMMARY")
     print("="*60)
@@ -170,10 +170,18 @@ def run_experiment(
     if book_info:
         print(f"Book Title: {book_info['title']}")
     print(f"Total Chapters: {len(all_chapters)}")
-    print(f"Total Questions: {len(results_all)}")
-    print(f"Average ROUGE-L: {avg_rouge:.4f}")
-    print(f"Spoiler Rate: {spoiler_rate:.4f} ({spoiler_flags}/{spoiler_denom} answerable questions)")
-    print(f"Spoiler-Free Rate: {1-spoiler_rate:.4f}")
+    print(f"Total Questions: {aggregate_metrics['total_questions']}")
+    print()
+    print("Answer Quality Metrics:")
+    print(f"  Average BERT Score: {aggregate_metrics['avg_bert_score']:.4f}")
+    print(f"  Answer Accuracy: {aggregate_metrics['answer_accuracy']:.4f} ({int(aggregate_metrics['answer_accuracy']*aggregate_metrics['total_questions'])}/{aggregate_metrics['total_questions']})")
+    if 'avg_llm_judge_score' in aggregate_metrics:
+        print(f"  LLM Judge Score: {aggregate_metrics['avg_llm_judge_score']:.4f}")
+    print()
+    print("Spoiler Detection Metrics:")
+    print(f"  Spoiler Rate: {aggregate_metrics['spoiler_rate']:.4f} ({spoiler_flags}/{spoiler_denom} answerable)")
+    print(f"  Spoiler-Free Rate: {aggregate_metrics['spoiler_free_rate']:.4f}")
+    print(f"  Avg Spoiler Score: {aggregate_metrics['avg_spoiler_score']:.4f}")
     print("="*60)
 
     return 0
