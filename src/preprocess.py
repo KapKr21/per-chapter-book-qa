@@ -1,155 +1,215 @@
 from datasets import load_dataset
+import re
 
 IDK_FALLBACK = "I don't know based on the given text."
 
-class BookPreprocessor:
-    def __init__(self, 
-                 narrative_split="train[:2000]", 
-                 booksum_split="train[:2000]"):
-        """
-        Pascal-friendly: default to slices so you can iterate fast.
-        Increase to full train later.
-        """
-        print("Loading datasets...")
-        self.narrative_qa = load_dataset("narrativeqa", split=narrative_split)
+class BookSumPreprocessor:
+    """
+    BookSum-only preprocessor for per-chapter QA.
+    Generates questions from chapter summaries or uses them as queries.
+    """
+    def __init__(self, booksum_split="train[:5000]"):
+        print("Loading BookSum dataset...")
         self.booksum = load_dataset("kmfoda/booksum", split=booksum_split)
+        print(f"Loaded {len(self.booksum)} BookSum entries")
 
-    def list_available_bids(self, limit=20):
-        """Return bids that have chapter text in the loaded BookSum slice."""
-        bids = []
-        seen = set()
+    def list_available_books(self, limit=50):
+        """Return book IDs (bids) that have multiple chapters."""
+        bid_counts = {}
         for ex in self.booksum:
             bid = ex.get("bid")
             chapter = ex.get("chapter", "")
-            if bid is None or bid in seen or not chapter:
-                continue
-            bids.append(bid)
-            seen.add(bid)
-            if len(bids) >= limit:
-                break
-        return bids
+            if bid and chapter:
+                bid_counts[bid] = bid_counts.get(bid, 0) + 1
+        
+        # Return bids with at least 3 chapters
+        books = [(bid, count) for bid, count in bid_counts.items() if count >= 3]
+        books.sort(key=lambda x: x[1], reverse=True)  # Sort by chapter count
+        return books[:limit]
 
-    def align_questions_to_chapters(self, book_bid, max_questions=50):
+    def get_book_info(self, book_bid):
+        """Get book title and metadata for a given bid."""
+        for ex in self.booksum:
+            if str(ex.get("bid")) == str(book_bid):
+                return {
+                    "bid": book_bid,
+                    "title": ex.get("summary_name", f"Book {book_bid}"),
+                    "source": ex.get("source", "unknown")
+                }
+        return None
+
+    def prepare_chapters_and_questions(self, book_bid, max_questions_per_chapter=3):
         """
-        Align NarrativeQA questions to BookSum chapters.
-
-        IMPORTANT:
-        - NarrativeQA IDs generally do NOT match BookSum bids.
-        - Title matching may or may not work depending on fields present in your BookSum slice.
-        - This function will:
-            1) try title matching if possible
-            2) otherwise (or if it yields nothing) fall back to scanning NarrativeQA slice
-               until it collects max_questions.
-        - Unlocatable / missing-answer pairs become:
-            max_chapter_idx = -1, unanswerable=True, gold_answer=IDK_FALLBACK
+        Prepare chapters and generate questions from summaries.
+        
+        For each chapter:
+        - Extract chapter text (full content)
+        - Extract summary (if available)
+        - Generate simple questions from summary
+        - Enforce spoiler-free constraint: questions for chapter k can only use chapters 0...k
+        
+        Returns:
+            aligned_data: List of {question, gold_answer, max_chapter_idx, unanswerable}
+            chapters_text: List of chapter texts
         """
-
+        
+        # Filter chapters for this book
         def _match_bid(x):
-            b = x.get("bid")
-            return b is not None and str(b) == str(book_bid)
-
+            return str(x.get("bid")) == str(book_bid)
+        
         book_chapters = self.booksum.filter(_match_bid)
-
+        
         if len(book_chapters) == 0:
-            sample_bids = list({str(self.booksum[i]["bid"]) for i in range(min(20, len(self.booksum)))})
+            available_bids = self.list_available_books(10)
             raise ValueError(
-                f"No chapters found for bid={book_bid} in loaded BookSum slice.\n"
-                f"Example bids in this slice: {sample_bids}\n"
-                f"Try increasing --booksum_split (e.g., train[:20000])."
+                f"No chapters found for bid={book_bid}.\n"
+                f"Available books (bid, chapter_count): {available_bids[:5]}\n"
+                f"Use list_available_books() to see all options."
             )
-
-        chapters_text = [c.get("chapter", "") for c in book_chapters if c.get("chapter")]
-        if not chapters_text:
-            raise ValueError(f"Chapters exist for bid={book_bid}, but chapter text is empty.")
-
-        book_title = (book_chapters[0].get("title") or "").strip()
-        book_questions = None
-
-        if book_title:
-            def _match_nqa(ex):
-                doc = ex.get("document", {}) or {}
-                doc_title = (doc.get("title") or "").strip().lower()
-                return doc_title == book_title.lower()
-
-            try:
-                filtered = self.narrative_qa.filter(_match_nqa)
-                if len(filtered) > 0:
-                    book_questions = filtered
-            except Exception:
-                book_questions = None
-
+        
+        # Extract chapter texts and summaries
+        chapters_data = []
+        for ex in book_chapters:
+            chapter_text = ex.get("chapter", "").strip()
+            summary_text = ex.get("summary_text", "").strip()
+            
+            if chapter_text:  # Only include if chapter has content
+                chapters_data.append({
+                    "text": chapter_text,
+                    "summary": summary_text,
+                    "chapter_id": len(chapters_data)
+                })
+        
+        if not chapters_data:
+            raise ValueError(f"No valid chapters found for bid={book_bid}")
+        
+        print(f"Found {len(chapters_data)} chapters for book {book_bid}")
+        
+        # Generate questions from summaries
         aligned_data = []
-
-        def _extract_question_text(ex):
-            q = ex.get("question")
-            if isinstance(q, dict):
-                return (q.get("text") or "").strip()
-            return (q or "").strip()
-
-        def _extract_answer_text(ex):
-            answers = ex.get("answers", [])
-            if isinstance(answers, list) and answers:
-                a0 = answers[0]
-                if isinstance(a0, dict):
-                    return (a0.get("text") or a0.get("answer") or "").strip()
-                if isinstance(a0, str):
-                    return a0.strip()
-            if isinstance(answers, dict):
-                return (answers.get("text") or "").strip()
-            return ""
-
-        def _add_example(q_text, answer_text):
-            if not answer_text:
-                aligned_data.append({
-                    "question": q_text,
-                    "gold_answer": IDK_FALLBACK,
-                    "max_chapter_idx": -1,
-                    "unanswerable": True
-                })
-                return
-
-            k = self._find_first_revealing_chapter(answer_text, 
-                                                   chapters_text)
-            if k is None:
-                aligned_data.append({
-                    "question": q_text,
-                    "gold_answer": IDK_FALLBACK,
-                    "max_chapter_idx": -1,
-                    "unanswerable": True
-                })
-            else:
-                aligned_data.append({
-                    "question": q_text,
-                    "gold_answer": answer_text,
-                    "max_chapter_idx": k,
-                    "unanswerable": False
-                })
-
-        source_iter = book_questions if book_questions is not None else self.narrative_qa
-
-        for ex in source_iter:
-            q_text = _extract_question_text(ex)
-            if not q_text:
+        
+        for chapter_idx, chapter_info in enumerate(chapters_data):
+            summary = chapter_info["summary"]
+            
+            if not summary or len(summary) < 50:
+                # Skip chapters without meaningful summaries
                 continue
-
-            answer_text = _extract_answer_text(ex)
-            _add_example(q_text, answer_text)
-
-            if len(aligned_data) >= max_questions:
-                break
-
+            
+            # Generate questions from this chapter's summary
+            questions = self._generate_questions_from_summary(
+                summary, 
+                chapter_idx,
+                max_questions=max_questions_per_chapter
+            )
+            
+            for q_data in questions:
+                aligned_data.append({
+                    "question": q_data["question"],
+                    "gold_answer": q_data["answer"],
+                    "max_chapter_idx": chapter_idx,  # Can only use chapters 0...chapter_idx
+                    "unanswerable": False,
+                    "chapter_summary": summary[:200]  # Store snippet for reference
+                })
+        
         if not aligned_data:
             raise ValueError(
-                "No usable questions found in NarrativeQA slice after scanning.\n"
-                "Try increasing --narrative_split (e.g., train[:20000])."
+                f"No questions generated for bid={book_bid}. "
+                f"Chapters may lack summaries. Try a different book."
             )
-
+        
+        chapters_text = [ch["text"] for ch in chapters_data]
+        
+        print(f"Generated {len(aligned_data)} questions across {len(chapters_text)} chapters")
+        
         return aligned_data, chapters_text
+
+    def _generate_questions_from_summary(self, summary, chapter_idx, max_questions=3):
+        """
+        Generate simple questions from a chapter summary.
+        
+        Strategy:
+        1. Extract key sentences from summary
+        2. Convert statements to questions
+        3. Use summary content as answers
+        
+        For a prototype, we use simple heuristics.
+        For production, you could use an LLM to generate better questions.
+        """
+        questions = []
+        
+        # Split summary into sentences
+        sentences = re.split(r'[.!?]+', summary)
+        sentences = [s.strip() for s in sentences if len(s.strip()) > 20]
+        
+        if not sentences:
+            return questions
+        
+        # Generate questions from first few sentences
+        for i, sentence in enumerate(sentences[:max_questions]):
+            if len(questions) >= max_questions:
+                break
+            
+            # Simple question generation heuristics
+            question, answer = self._sentence_to_question(sentence, chapter_idx)
+            
+            if question and answer:
+                questions.append({
+                    "question": question,
+                    "answer": answer
+                })
+        
+        # If we didn't generate enough questions, add a generic one
+        if len(questions) == 0 and len(summary) > 50:
+            questions.append({
+                "question": f"What happens in chapter {chapter_idx + 1}?",
+                "answer": summary[:300]  # First 300 chars as answer
+            })
+        
+        return questions
+
+    def _sentence_to_question(self, sentence, chapter_idx):
+        """
+        Convert a statement sentence into a question.
+        Simple heuristic-based approach for prototype.
+        """
+        sentence = sentence.strip()
+        
+        if len(sentence) < 20:
+            return None, None
+        
+        # Pattern 1: "X does Y" -> "What does X do?"
+        # Pattern 2: "X is Y" -> "What is X?" or "Who is X?"
+        # Pattern 3: Generic -> "What happens regarding [key phrase]?"
+        
+        # Extract potential subjects (simple heuristic)
+        words = sentence.split()
+        
+        # Look for character names (capitalized words)
+        characters = [w for w in words if w[0].isupper() and len(w) > 2 and w not in ['The', 'A', 'An', 'In', 'At']]
+        
+        if characters:
+            char = characters[0]
+            # Generate character-focused question
+            if ' is ' in sentence.lower() or ' was ' in sentence.lower():
+                question = f"Who is {char} and what is their role?"
+                answer = sentence
+            elif ' does ' in sentence.lower() or ' did ' in sentence.lower():
+                question = f"What does {char} do?"
+                answer = sentence
+            else:
+                question = f"What happens with {char}?"
+                answer = sentence
+        else:
+            # Generic question
+            question = f"What is described in this part of the story?"
+            answer = sentence
+        
+        return question, answer
 
     def _find_first_revealing_chapter(self, answer, chapters):
         """
-        Heuristic: find earliest chapter containing enough keyword evidence from the answer.
-        Returns chapter index, or None if answer cannot be located in the book.
+        Find the earliest chapter that contains evidence for the answer.
+        Used for validation and spoiler detection.
         """
         kws = [w.lower() for w in str(answer).split() if len(w) > 3]
         kws = kws[:8]
