@@ -110,7 +110,7 @@ Spoiler-Free Rate: 0.9477
 per-chapter-book-qa/
 ├── main_booksum.py              # Main entry point for BookSum-only experiments
 ├── src/
-│   ├── preprocess_booksum.py    # BookSum preprocessing & question generation
+│   ├── preprocess.py    # BookSum preprocessing & question generation
 │   ├── embedder.py              # Chapter embedding with Sentence Transformers
 │   ├── retriever.py             # Spoiler-safe chapter retrieval with FAISS
 │   ├── generator.py             # Answer generation with LLMs

@@ -1,7 +1,7 @@
 import argparse
 import sys
 
-from src.preprocess_booksum import BookSumPreprocessor
+from src.preprocess import BookSumPreprocessor
 from src.generator import LongContextGenerator
 from src.evaluator import BookEvaluator
 from src.embedder import BookEmbedder
