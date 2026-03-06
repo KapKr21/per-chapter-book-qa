@@ -69,21 +69,35 @@ This shows books with their BID (Book ID) and chapter count.
 2. **Run experiment on a specific book**:
 
 ```bash
-# Example with book BID 145 (266 chapters)
-python main_booksum.py --book_bid 145 --use_retriever --max_questions_per_chapter 2
+# Quick test with 20 questions (recommended for first run)
+python main.py --book_bid 145 --use_retriever --max_total_questions 20
+
+# Medium test with 50 questions
+python main.py --book_bid 145 --use_retriever --max_total_questions 50
+
+# Full experiment with 100+ questions
+python main.py --book_bid 145 --use_retriever --max_total_questions 100
 ```
+
+**Tip**: Start with `--max_total_questions 20` for quick testing (~5-10 minutes)
 
 ### Command Line Arguments
 
 ```bash
-python main_booksum.py \
+python main.py \
   --book_bid 145 \                      # BookSum book ID
   --booksum_split "train[:5000]" \      # Dataset split to load
-  --max_questions_per_chapter 3 \       # Questions per chapter
+  --max_questions_per_chapter 1 \       # Questions per chapter (default: 1)
+  --max_total_questions 50 \            # Total questions to evaluate (default: 50)
   --use_retriever \                     # Enable FAISS retrieval (recommended)
   --top_k 2 \                           # Retrieve top-k chapters
   --model_id "Qwen/Qwen2.5-3B-Instruct" # LLM for answer generation
 ```
+
+**Key Parameters:**
+- `--max_total_questions`: Limits evaluation for faster testing (20-100 recommended)
+- `--max_questions_per_chapter`: How many questions to generate per chapter (1-2 recommended)
+- `--use_retriever`: Always use this for proper spoiler prevention
 
 ### Example Output
 

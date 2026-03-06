@@ -38,7 +38,8 @@ def _cap_context_by_chars(chunks, max_chars: int):
 def run_experiment(
     book_bid: str,
     booksum_split: str = "train[:5000]",
-    max_questions_per_chapter: int = 3,
+    max_questions_per_chapter: int = 1,
+    max_total_questions: int = 50,
     model_id: str = "Qwen/Qwen2.5-3B-Instruct",
     max_new_tokens: int = 64,
     use_retriever: bool = True,
@@ -52,6 +53,7 @@ def run_experiment(
         book_bid: BookSum book ID (bid)
         booksum_split: Which split/slice of BookSum to load
         max_questions_per_chapter: How many questions to generate per chapter
+        max_total_questions: Maximum total questions to evaluate (for faster testing)
         model_id: HuggingFace model ID for answer generation
         max_new_tokens: Max tokens to generate
         use_retriever: Whether to use FAISS retriever (recommended)
@@ -110,9 +112,12 @@ def run_experiment(
     spoiler_denom = 0
 
     # Run QA loop
-    print(f"\nRunning {len(aligned_questions)} questions...\n")
+    print(f"\nRunning {min(len(aligned_questions), max_total_questions)} questions (limited from {len(aligned_questions)} total)...\n")
     
-    for i, entry in enumerate(aligned_questions, start=1):
+    # Limit questions for faster testing
+    questions_to_run = aligned_questions[:max_total_questions]
+    
+    for i, entry in enumerate(questions_to_run, start=1):
         q = entry["question"]
         k = entry.get("max_chapter_idx", -1)
         unanswerable = bool(entry.get("unanswerable", False)) or (k == -1)
@@ -153,8 +158,9 @@ def run_experiment(
 
         # Print progress
         if i % 5 == 0 or i <= 3:
-            print(f"Example {i}/{len(aligned_questions)}")
-            print(f"  Chapter: {k+1} | Spoiler-Safe: {not metrics['spoiler_violation']}")
+            spoiler_safe = not metrics['spoiler_violation']
+            print(f"Example {i}/{len(questions_to_run)}")
+            print(f"  Chapter: {k+1} | Spoiler-Safe: {spoiler_safe}")
             print(f"  BERT Score: {metrics['bert_score']:.4f} | Answer Correct: {metrics['answer_equivalent']}")
             print(f"  Q: {q[:80]}...")
             print(f"  A: {ans[:100]}...")
@@ -206,8 +212,14 @@ def main():
     parser.add_argument(
         "--max_questions_per_chapter", 
         type=int, 
-        default=3,
-        help="Maximum questions to generate per chapter (default: 3)"
+        default=1,
+        help="Maximum questions to generate per chapter (default: 1)"
+    )
+    parser.add_argument(
+        "--max_total_questions",
+        type=int,
+        default=50,
+        help="Maximum total questions to evaluate (default: 50 for faster testing)"
     )
     parser.add_argument(
         "--model_id", 
@@ -275,6 +287,7 @@ def main():
         book_bid=args.book_bid,
         booksum_split=args.booksum_split,
         max_questions_per_chapter=args.max_questions_per_chapter,
+        max_total_questions=args.max_total_questions,
         model_id=args.model_id,
         max_new_tokens=args.max_new_tokens,
         use_retriever=args.use_retriever,
