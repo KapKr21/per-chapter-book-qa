@@ -195,7 +195,7 @@ def run_experiment(
     retrieval_correct_count = sum(1 for r in results_all if r.get("retrieval_correct", True))
     
     
-    print("EXPERIMENT SUMMARY\n")
+    print("\nEXPERIMENT SUMMARY\n")
 
     print(f"Book BID: {book_bid}")
     if book_info:
@@ -207,7 +207,7 @@ def run_experiment(
     print(f"  Retrieval Correctness: {retrieval_correct_count}/{aggregate_metrics['total_questions']} ({retrieval_correct_count/aggregate_metrics['total_questions']:.1%})")
     print(f"  Spoiler-Free Rate: {aggregate_metrics['spoiler_free_rate']:.4f}")
     print(f"  → System Design: Only chapters 0...k accessible for chapter k")
-    print(f"  → Result: {'✓ PERFECT' if aggregate_metrics['spoiler_free_rate'] >= 0.99 else '✗ NEEDS FIX'}")
+    print(f"  → Result: {'PERFECT' if aggregate_metrics['spoiler_free_rate'] >= 0.99 else 'NEEDS FIX'}")
     print()
     print("Answer Quality Metrics:")
     print(f"  Average BERT Score: {aggregate_metrics['avg_bert_score']:.4f}")
