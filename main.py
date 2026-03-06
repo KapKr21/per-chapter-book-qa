@@ -145,7 +145,7 @@ def run_experiment(
             
             #Debuging: Print which chapters were retrieved
             if i <= 3:
-                print(f"\n[Debuging] Question about chapter {k+1}, max allowed: {max_allowed_k+1}, retrieved chapters: {[cid+1 for cid in safe_ids]}")
+                print(f"\n[Debugging] Question about chapter {k+1}, max allowed: {max_allowed_k+1}, retrieved chapters: {[cid+1 for cid in safe_ids]}")
         else:
             safe_context = all_chapters[:max_allowed_k + 1] if max_allowed_k >= 0 else [all_chapters[0]]
             retrieval_correct = True
@@ -179,17 +179,14 @@ def run_experiment(
 
         #Printing progress
         if i % 5 == 0 or i <= 3:
-            print(f"\n{'='*70}")
-            print(f"Example {i}/{len(questions_to_run)}")
-            print(f"{'='*70}")
+            print(f"\nExample {i}/{len(questions_to_run)}\n")
             print(f"Chapter: {k+1}/{len(all_chapters)}")
-            print(f"Retrieval Correct: {'✓ YES' if retrieval_correct else '✗ NO'}")
-            print(f"Spoiler-Free: {'✓ YES (by design)' if spoiler_free else '✗ NO (retrieval error)'}")
+            print(f"Retrieval Correct: {'YES' if retrieval_correct else 'NO'}")
+            print(f"Spoiler-Free: {'YES' if spoiler_free else 'NO (retrieval error)'}")
             print(f"BERT Score: {metrics['bert_score']:.4f} | Answer Correct: {metrics['answer_equivalent']}")
             print(f"\nQuestion: {q}")
             print(f"\nGround Truth: {gold[:200]}...")
             print(f"\nGenerated Answer: {ans}")
-            print(f"{'='*70}\n")
 
     #Summary - computing aggregate metrics
     aggregate_metrics = evaluator.compute_aggregate_metrics(results_all)
@@ -217,7 +214,6 @@ def run_experiment(
     print(f"  Answer Accuracy: {aggregate_metrics['answer_accuracy']:.4f} ({int(aggregate_metrics['answer_accuracy']*aggregate_metrics['total_questions'])}/{aggregate_metrics['total_questions']})")
     if 'avg_llm_judge_score' in aggregate_metrics:
         print(f"  LLM Judge Score: {aggregate_metrics['avg_llm_judge_score']:.4f}")
-    print("="*60)
 
     return 0
 
