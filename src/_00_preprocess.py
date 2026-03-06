@@ -1,19 +1,19 @@
 from datasets import load_dataset
 import re
 
-IDK_FALLBACK = "I don't know based on the given text."
-
 class BookSumPreprocessor:
     """
-    BookSum-only preprocessor for per-chapter QA.
+    BookSum dataset preprocessor for per-chapter QA.
     Generates questions from chapter summaries or uses them as queries.
     """
-    def __init__(self, booksum_split="train[:5000]"):
-        print("Loading BookSum dataset...")
+    def __init__(self, 
+                 booksum_split="train[:5000]"):
+        print("Loading BookSum dataset...\n")
         self.booksum = load_dataset("kmfoda/booksum", split=booksum_split)
-        print(f"Loaded {len(self.booksum)} BookSum entries")
+        print(f"Loaded {len(self.booksum)} BookSum entries\n")
 
-    def list_available_books(self, limit=50):
+    def list_available_books(self, 
+                             limit=50):
         """Return book IDs (bids) that have multiple chapters."""
         bid_counts = {}
         for ex in self.booksum:
@@ -22,12 +22,14 @@ class BookSumPreprocessor:
             if bid and chapter:
                 bid_counts[bid] = bid_counts.get(bid, 0) + 1
         
-        # Return bids with at least 3 chapters
+        #Returning bids with at least 3 chapters
         books = [(bid, count) for bid, count in bid_counts.items() if count >= 3]
-        books.sort(key=lambda x: x[1], reverse=True)  # Sort by chapter count
+        #Sorting by chapter count
+        books.sort(key=lambda x: x[1], reverse=True)  
         return books[:limit]
 
-    def get_book_info(self, book_bid):
+    def get_book_info(self, 
+                      book_bid):
         """Get book title and metadata for a given bid."""
         for ex in self.booksum:
             if str(ex.get("bid")) == str(book_bid):
@@ -38,7 +40,9 @@ class BookSumPreprocessor:
                 }
         return None
 
-    def prepare_chapters_and_questions(self, book_bid, max_questions_per_chapter=3):
+    def prepare_chapters_and_questions(self, 
+                                       book_bid, 
+                                       max_questions_per_chapter=5):
         """
         Prepare chapters and generate questions from summaries.
         
@@ -53,7 +57,7 @@ class BookSumPreprocessor:
             chapters_text: List of chapter texts
         """
         
-        # Filter chapters for this book
+        #Filtering chapters for this book
         def _match_bid(x):
             return str(x.get("bid")) == str(book_bid)
         
@@ -67,13 +71,13 @@ class BookSumPreprocessor:
                 f"Use list_available_books() to see all options."
             )
         
-        # Extract chapter texts and summaries
+        #Extracting chapter texts and summaries
         chapters_data = []
         for ex in book_chapters:
             chapter_text = ex.get("chapter", "").strip()
             summary_text = ex.get("summary_text", "").strip()
             
-            if chapter_text:  # Only include if chapter has content
+            if chapter_text:  #Only including if chapter has content
                 chapters_data.append({
                     "text": chapter_text,
                     "summary": summary_text,
@@ -83,19 +87,19 @@ class BookSumPreprocessor:
         if not chapters_data:
             raise ValueError(f"No valid chapters found for bid={book_bid}")
         
-        print(f"Found {len(chapters_data)} chapters for book {book_bid}")
+        print(f"Found {len(chapters_data)} chapters for book {book_bid}\n")
         
-        # Generate questions from summaries
+        #Generating questions from summaries
         aligned_data = []
         
         for chapter_idx, chapter_info in enumerate(chapters_data):
             summary = chapter_info["summary"]
             
             if not summary or len(summary) < 50:
-                # Skip chapters without meaningful summaries
+                #Skipping chapters without meaningful summaries
                 continue
             
-            # Generate questions from this chapter's summary
+            #Generating questions from this chapter's summary
             questions = self._generate_questions_from_summary(
                 summary, 
                 chapter_idx,
@@ -106,9 +110,9 @@ class BookSumPreprocessor:
                 aligned_data.append({
                     "question": q_data["question"],
                     "gold_answer": q_data["answer"],
-                    "max_chapter_idx": chapter_idx,  # Can only use chapters 0...chapter_idx
+                    "max_chapter_idx": chapter_idx,  #Can only use chapters 0...chapter_idx
                     "unanswerable": False,
-                    "chapter_summary": summary[:200]  # Store snippet for reference
+                    "chapter_summary": summary[:200]  #Storing snippet for reference
                 })
         
         if not aligned_data:
@@ -123,7 +127,10 @@ class BookSumPreprocessor:
         
         return aligned_data, chapters_text
 
-    def _generate_questions_from_summary(self, summary, chapter_idx, max_questions=3):
+    def _generate_questions_from_summary(self, 
+                                         summary, 
+                                         chapter_idx, 
+                                         max_questions=3):
         """
         Generate simple questions from a chapter summary.
         
@@ -137,19 +144,19 @@ class BookSumPreprocessor:
         """
         questions = []
         
-        # Split summary into sentences
+        #Splitting summary into sentences
         sentences = re.split(r'[.!?]+', summary)
         sentences = [s.strip() for s in sentences if len(s.strip()) > 20]
         
         if not sentences:
             return questions
         
-        # Generate questions from first few sentences
+        #Generating questions from first few sentences
         for i, sentence in enumerate(sentences[:max_questions]):
             if len(questions) >= max_questions:
                 break
             
-            # Simple question generation heuristics
+            #Simple question generation heuristics
             question, answer = self._sentence_to_question(sentence, chapter_idx)
             
             if question and answer:
@@ -158,16 +165,18 @@ class BookSumPreprocessor:
                     "answer": answer
                 })
         
-        # If we didn't generate enough questions, add a generic one
+        #If we didn't generate enough questions, adding a generic one
         if len(questions) == 0 and len(summary) > 50:
             questions.append({
                 "question": f"What happens in chapter {chapter_idx + 1}?",
-                "answer": summary[:300]  # First 300 chars as answer
+                "answer": summary[:500]  #First 500 chars as answer
             })
         
         return questions
 
-    def _sentence_to_question(self, sentence, chapter_idx):
+    def _sentence_to_question(self, 
+                              sentence, 
+                              chapter_idx):
         """
         Convert a statement sentence into a question.
         Simple heuristic-based approach for prototype.
@@ -177,19 +186,15 @@ class BookSumPreprocessor:
         if len(sentence) < 20:
             return None, None
         
-        # Pattern 1: "X does Y" -> "What does X do?"
-        # Pattern 2: "X is Y" -> "What is X?" or "Who is X?"
-        # Pattern 3: Generic -> "What happens regarding [key phrase]?"
-        
-        # Extract potential subjects (simple heuristic)
+        #Extracting potential subjects (simple heuristic)
         words = sentence.split()
         
-        # Look for character names (capitalized words)
+        #Looking for character names (capitalized words)
         characters = [w for w in words if w[0].isupper() and len(w) > 2 and w not in ['The', 'A', 'An', 'In', 'At']]
         
         if characters:
             char = characters[0]
-            # Generate character-focused question
+            #Generating character-focused question
             if ' is ' in sentence.lower() or ' was ' in sentence.lower():
                 question = f"Who is {char} and what is their role?"
                 answer = sentence
@@ -200,13 +205,15 @@ class BookSumPreprocessor:
                 question = f"What happens with {char}?"
                 answer = sentence
         else:
-            # Generic question
+            #Generic question
             question = f"What is described in this part of the story?"
             answer = sentence
         
         return question, answer
 
-    def _find_first_revealing_chapter(self, answer, chapters):
+    def _find_first_revealing_chapter(self, 
+                                      answer, 
+                                      chapters):
         """
         Find the earliest chapter that contains evidence for the answer.
         Used for validation and spoiler detection.

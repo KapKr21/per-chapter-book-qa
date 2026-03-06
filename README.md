@@ -142,7 +142,7 @@ Spoiler Detection Metrics:
 per-chapter-book-qa/
 ├── main_booksum.py              # Main entry point for BookSum-only experiments
 ├── src/
-│   ├── preprocess.py            # BookSum preprocessing & question generation
+│   ├── 00_preprocess.py            # BookSum preprocessing & question generation
 │   ├── embedder.py              # Chapter embedding with Sentence Transformers
 │   ├── retriever.py             # Spoiler-safe chapter retrieval with FAISS
 │   ├── generator.py             # Answer generation with LLMs

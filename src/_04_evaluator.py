@@ -1,5 +1,4 @@
 from sentence_transformers import SentenceTransformer, util
-import torch
 from typing import Optional
 
 class BookEvaluator:
@@ -26,8 +25,8 @@ class BookEvaluator:
             similarity_threshold: Threshold for answer equivalence (0-1)
             spoiler_threshold: Threshold for spoiler detection (0-1) - higher = less sensitive
         """
-        print("Loading BERT model for semantic similarity...")
-        # Use a model optimized for semantic similarity
+        print("Loading BERT model for semantic similarity...\n")
+        #Using a model optimized for semantic similarity
         self.bert_model = SentenceTransformer('all-MiniLM-L6-v2')
         self.similarity_threshold = similarity_threshold
         self.spoiler_threshold = spoiler_threshold
@@ -39,7 +38,11 @@ class BookEvaluator:
             print("Warning: use_llm_judge=True but no model specified. Disabling LLM judge.")
             self.use_llm_judge = False
 
-    def evaluate(self, prediction, ground_truth, future_chapters, question=None):
+    def evaluate(self, 
+                 prediction, 
+                 ground_truth, 
+                 future_chapters, 
+                 question=None):
         """
         Evaluate answer quality and check for spoilers.
         
@@ -58,14 +61,14 @@ class BookEvaluator:
                 - spoiler_score: Max similarity with future chapters
         """
         
-        # 1. BERT-based Answer Equivalence
+        #1. BERT-based Answer Equivalence
         bert_score = self._compute_bert_similarity(prediction, ground_truth)
         answer_equivalent = bert_score >= self.similarity_threshold
         
-        # 2. Spoiler Detection (semantic similarity with future chapters)
+        #2. Spoiler Detection (semantic similarity with future chapters)
         spoiler_score, spoiler_violation = self._check_spoilers(prediction, future_chapters)
         
-        # 3. Optional LLM-as-a-Judge
+        #3. Optional LLM-as-a-Judge
         llm_judge_score = None
         if self.use_llm_judge and question:
             llm_judge_score = self._llm_judge(question, prediction, ground_truth)
@@ -78,7 +81,9 @@ class BookEvaluator:
             "spoiler_score": spoiler_score,
         }
 
-    def _compute_bert_similarity(self, text1, text2):
+    def _compute_bert_similarity(self, 
+                                 text1, 
+                                 text2):
         """
         Compute semantic similarity using BERT embeddings.
         Returns cosine similarity score (0-1).
@@ -95,7 +100,9 @@ class BookEvaluator:
         
         return max(0.0, min(1.0, similarity))  # Clamp to [0, 1]
 
-    def _check_spoilers(self, prediction, future_chapters):
+    def _check_spoilers(self, 
+                        prediction, 
+                        future_chapters):
         """
         Check if prediction contains information from future chapters.
         
@@ -106,17 +113,17 @@ class BookEvaluator:
         if not future_chapters or not prediction:
             return 0.0, False
         
-        # Encode prediction once
+        #Encoding prediction once
         pred_emb = self.bert_model.encode(prediction, convert_to_tensor=True)
         
         max_similarity = 0.0
         
-        # Check similarity with each future chapter
+        #Checking similarity with each future chapter
         for chapter in future_chapters:
             if not chapter or len(chapter.strip()) < 50:
                 continue
             
-            # For long chapters, sample chunks to avoid memory issues
+            #For long chapters, sample chunks to avoid memory issues
             chapter_text = chapter[:5000]  # First 5000 chars
             
             chapter_emb = self.bert_model.encode(chapter_text, convert_to_tensor=True)
@@ -128,7 +135,10 @@ class BookEvaluator:
         
         return max_similarity, spoiler_violation
 
-    def _llm_judge(self, question, prediction, ground_truth):
+    def _llm_judge(self, 
+                   question, 
+                   prediction, 
+                   ground_truth):
         """
         Use LLM-as-a-judge to evaluate answer quality.
         
@@ -181,7 +191,11 @@ class BookEvaluator:
             return None
         """
 
-    def batch_evaluate(self, predictions, ground_truths, future_chapters_list, questions=None):
+    def batch_evaluate(self, 
+                       predictions, 
+                       ground_truths, 
+                       future_chapters_list, 
+                       questions=None):
         """
         Evaluate multiple predictions at once.
         
@@ -203,7 +217,8 @@ class BookEvaluator:
         
         return results
 
-    def compute_aggregate_metrics(self, results):
+    def compute_aggregate_metrics(self, 
+                                  results):
         """
         Compute aggregate metrics from a list of evaluation results.
         
@@ -232,7 +247,7 @@ class BookEvaluator:
             "avg_spoiler_score": avg_spoiler_score,
         }
         
-        # Add LLM judge metrics if available
+        #Adding LLM judge metrics if available
         llm_scores = [r["llm_judge_score"] for r in results if r["llm_judge_score"] is not None]
         if llm_scores:
             aggregate["avg_llm_judge_score"] = sum(llm_scores) / len(llm_scores)

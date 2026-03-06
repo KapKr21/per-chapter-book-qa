@@ -1,11 +1,11 @@
 import argparse
 import sys
 
-from src.preprocess import BookSumPreprocessor
-from src.generator import LongContextGenerator
-from src.evaluator import BookEvaluator
-from src.embedder import BookEmbedder
-from src.retriever import ChapterRestrictedRetriever
+from src._00_preprocess import BookSumPreprocessor
+from src._03_generator import LongContextGenerator
+from src._04_evaluator import BookEvaluator
+from src._01_embedder import BookEmbedder
+from src._02_retriever import ChapterRestrictedRetriever
 
 IDK_FALLBACK = "I don't know based on the given text."
 
@@ -67,13 +67,13 @@ def run_experiment(
     gen = LongContextGenerator(model_id=model_id)
     evaluator = BookEvaluator(spoiler_threshold=spoiler_threshold)
 
-    # Get book info
+    #Getting book info
     book_info = prep.get_book_info(book_bid)
     if book_info:
         print(f"\nBook: {book_info['title']} (BID: {book_bid})")
         print(f"Source: {book_info['source']}\n")
 
-    # Prepare chapters and generate questions
+    #Preparing chapters and generate questions
     aligned_questions, all_chapters = prep.prepare_chapters_and_questions(
         book_bid, 
         max_questions_per_chapter=max_questions_per_chapter
@@ -87,7 +87,7 @@ def run_experiment(
         print(f"[error] No questions generated for bid={book_bid}.")
         return 1
 
-    # Build retriever if requested
+    #Building retriever if requested
     retriever = None
     if use_retriever:
         print("\nBuilding retriever index...\n")
@@ -113,10 +113,10 @@ def run_experiment(
     spoiler_flags = 0
     spoiler_denom = 0
 
-    # Run QA loop
+    #Running QA loop
     print(f"\nRunning {min(len(aligned_questions), max_total_questions)} questions (limited from {len(aligned_questions)} total)...\n")
     
-    # Limit questions for faster testing
+    #Limiting questions for faster testing
     questions_to_run = aligned_questions[:max_total_questions]
     
     for i, entry in enumerate(questions_to_run, start=1):
@@ -133,37 +133,37 @@ def run_experiment(
             future_context = all_chapters[k + 1:] if (k + 1) < len(all_chapters) else []
             gold = entry["gold_answer"]
 
-        # Retrieve safe context (only chapters 0...k)
+        #Retrieving safe context (only chapters 0...k)
         if retriever is not None:
             safe_ids = retriever.retrieve_safe_context(q, max_allowed_k, top_k=top_k)
             safe_context = [all_chapters[cid] for cid in safe_ids] if safe_ids else [all_chapters[0]]
             
-            # Verify retrieval correctness: all retrieved chapters must be <= max_allowed_k
+            #Verifying retrieval correctness: all retrieved chapters must be <= max_allowed_k
             retrieval_correct = all(cid <= max_allowed_k for cid in safe_ids)
             if not retrieval_correct:
                 print(f"WARNING: Retrieved chapters {safe_ids} exceed max_allowed {max_allowed_k}!")
             
-            # Debug: Print which chapters were retrieved
+            #Debuging: Print which chapters were retrieved
             if i <= 3:
-                print(f"\n[DEBUG] Question about chapter {k+1}, max allowed: {max_allowed_k+1}, retrieved chapters: {[cid+1 for cid in safe_ids]}")
+                print(f"\n[Debuging] Question about chapter {k+1}, max allowed: {max_allowed_k+1}, retrieved chapters: {[cid+1 for cid in safe_ids]}")
         else:
             safe_context = all_chapters[:max_allowed_k + 1] if max_allowed_k >= 0 else [all_chapters[0]]
             retrieval_correct = True
 
         safe_context = _cap_context_by_chars(safe_context, max_chars=max_context_chars)
 
-        # Generate answer
+        #Generate answer
         ans = gen.generate_answer(q, safe_context, max_new_tokens=max_new_tokens)
         
-        # Since we only provided safe chapters, the answer CANNOT contain spoilers
-        # (unless the model hallucinates, which we'll detect separately)
+        #Since we only provided safe chapters, the answer CANNOT contain spoilers
+        #(unless the model hallucinates, which we are detecting separately)
         spoiler_free = retrieval_correct
 
-        # Evaluate answer quality
+        #Evaluating answer quality
         metrics = evaluator.evaluate(ans, gold, future_context, question=q)
 
-        # Override spoiler detection: if retrieval was correct, answer is spoiler-free
-        # (We only gave the model chapters 0...k, so it CANNOT spoil future chapters)
+        #Overriding spoiler detection: if retrieval was correct, answer is spoiler-free
+        #(We only gave the model chapters 0...k, so it CANNOT spoil future chapters)
         metrics["spoiler_violation"] = not spoiler_free
         metrics["retrieval_correct"] = retrieval_correct
 
@@ -177,7 +177,7 @@ def run_experiment(
             if metrics.get("spoiler_violation"):
                 spoiler_flags += 1
 
-        # Print progress
+        #Printing progress
         if i % 5 == 0 or i <= 3:
             print(f"\n{'='*70}")
             print(f"Example {i}/{len(questions_to_run)}")
@@ -191,15 +191,15 @@ def run_experiment(
             print(f"\nGenerated Answer: {ans}")
             print(f"{'='*70}\n")
 
-    # Summary - compute aggregate metrics
+    #Summary - computing aggregate metrics
     aggregate_metrics = evaluator.compute_aggregate_metrics(results_all)
     
-    # Count retrieval correctness
+    #Counting retrieval correctness
     retrieval_correct_count = sum(1 for r in results_all if r.get("retrieval_correct", True))
     
-    print("\n" + "="*60)
-    print("EXPERIMENT SUMMARY")
-    print("="*60)
+    
+    print("EXPERIMENT SUMMARY\n")
+
     print(f"Book BID: {book_bid}")
     if book_info:
         print(f"Book Title: {book_info['title']}")
@@ -293,7 +293,7 @@ def main():
 
     args = parser.parse_args()
 
-    # List books mode
+    #Listing books mode
     if args.list_books:
         print("Loading BookSum to find available books...\n")
         prep = BookSumPreprocessor(booksum_split=args.booksum_split)
@@ -313,11 +313,11 @@ def main():
         print(f"  python main_booksum.py --book_bid <BID> --use_retriever")
         return 0
     
-    # Validate book_bid is provided for experiment mode
+    #Validating book_bid is provided for experiment mode
     if not args.book_bid:
         parser.error("--book_bid is required (or use --list_books to see available books)")
 
-    # Run experiment
+    #Running experiment
     rc = run_experiment(
         book_bid=args.book_bid,
         booksum_split=args.booksum_split,
