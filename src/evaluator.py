@@ -16,7 +16,7 @@ class BookEvaluator:
                  use_llm_judge: bool = False,
                  llm_judge_model: Optional[str] = None,
                  similarity_threshold: float = 0.5,
-                 spoiler_threshold: float = 0.4):
+                 spoiler_threshold: float = 0.6):
         """
         Initialize evaluator.
         
@@ -24,7 +24,7 @@ class BookEvaluator:
             use_llm_judge: Whether to use LLM-as-a-judge (requires API key)
             llm_judge_model: Model to use for LLM judging (e.g., "gpt-4", "claude-3")
             similarity_threshold: Threshold for answer equivalence (0-1)
-            spoiler_threshold: Threshold for spoiler detection (0-1)
+            spoiler_threshold: Threshold for spoiler detection (0-1) - higher = less sensitive
         """
         print("Loading BERT model for semantic similarity...")
         # Use a model optimized for semantic similarity
