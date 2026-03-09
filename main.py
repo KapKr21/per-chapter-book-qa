@@ -117,8 +117,7 @@ def run_experiment(
     spoiler_denom = 0
 
     #Running QA loop
-    print(f"\nRunning {min(len(aligned_questions), 
-                           max_total_questions)} questions (limited from {len(aligned_questions)} total)...\n")
+    print(f"\nRunning {min(len(aligned_questions), max_total_questions)} questions (limited from {len(aligned_questions)} total)...\n")
     
     #Limiting questions for faster prototype testing
     questions_to_run = aligned_questions[:max_total_questions]
@@ -311,7 +310,7 @@ def main():
             print(f"{bid:<10} {count:<10} {title}")
         
         print("\nUsage:")
-        print(f"  python main_booksum.py --book_bid <BID> --use_retriever")
+        print(f"  python main.py --book_bid <BID> --use_retriever")
         return 0
     
     #Validating book_bid is provided for experiment mode
