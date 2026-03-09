@@ -20,7 +20,7 @@ class BookEvaluator:
             similarity_threshold: Threshold for answer equivalence (0-1)
             spoiler_threshold: Threshold for spoiler detection (0-1) - higher = less sensitive
         """
-        print("Loading BERT model for semantic similarity...\n")
+        print("\nLoading BERT model for semantic similarity...\n")
 
         #Using a model optimized for semantic similarity
         self.bert_model = SentenceTransformer('all-MiniLM-L6-v2')

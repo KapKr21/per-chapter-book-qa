@@ -295,7 +295,7 @@ def main():
 
     #Listing books mode
     if args.list_books:
-        print("Loading BookSum to find available books...\n")
+        print("\nLoading BookSum to find available books...\n")
         prep = BookSumPreprocessor(booksum_split=args.booksum_split)
         books = prep.list_available_books(limit=30)
         

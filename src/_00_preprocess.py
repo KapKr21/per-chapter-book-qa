@@ -8,11 +8,11 @@ class BookSumPreprocessor:
     """
     def __init__(self, 
                  booksum_split="train[:5000]"):
-        print("Loading BookSum dataset...\n")
+        print("\nLoading BookSum dataset...\n")
 
         self.booksum = load_dataset("kmfoda/booksum", 
                                     split=booksum_split)
-        print(f"Successfully loaded {len(self.booksum)} BookSum entries\n")
+        print(f"\nSuccessfully loaded {len(self.booksum)} BookSum entries\n")
 
     def list_available_books(self, 
                              limit=50):
