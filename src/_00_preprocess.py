@@ -8,7 +8,7 @@ class BookSumPreprocessor:
     """
     def __init__(self, 
                  booksum_split="train[:5000]"):
-        print("\nLoading BookSum dataset...\n")
+        print("\nLoading BookSum dataset...")
 
         self.booksum = load_dataset("kmfoda/booksum", 
                                     split=booksum_split)

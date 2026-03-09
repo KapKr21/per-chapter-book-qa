@@ -93,7 +93,7 @@ def run_experiment(
     retriever = None
 
     if use_retriever:
-        print("\nBuilding retriever index...\n")
+        print("\nBuilding retriever index...")
 
         embedder = BookEmbedder()
         try:
@@ -117,7 +117,7 @@ def run_experiment(
     spoiler_denom = 0
 
     #Running QA loop
-    print(f"\nRunning {min(len(aligned_questions), max_total_questions)} questions (limited from {len(aligned_questions)} total)...\n")
+    print(f"\nRunning {min(len(aligned_questions), max_total_questions)} questions (limited from {len(aligned_questions)} total)...")
     
     #Limiting questions for faster prototype testing
     questions_to_run = aligned_questions[:max_total_questions]
@@ -297,7 +297,7 @@ def main():
 
     #Listing books mode
     if args.list_books:
-        print("\nLoading BookSum to find available books...\n")
+        print("\nLoading BookSum to find available books...")
         prep = BookSumPreprocessor(booksum_split=args.booksum_split)
         books = prep.list_available_books(limit=30)
         
