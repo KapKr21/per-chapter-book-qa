@@ -7,11 +7,11 @@ from src._04_evaluator import BookEvaluator
 from src._01_embedder import BookEmbedder
 from src._02_retriever import ChapterRestrictedRetriever
 
-IDK_FALLBACK = "I don't know based on the given text."
+IDK_FALLBACK = "I don't know based on the context."
 
 def _cap_context_by_chars(chunks, max_chars: int):
     """
-    Keep the *end* of the context (usually more relevant with chapter slices),
+    Keep the end of the context (usually more relevant with chapter slices),
     and cap total size to avoid CUDA OOM from huge prompts.
     """
     if max_chars <= 0:
@@ -19,6 +19,7 @@ def _cap_context_by_chars(chunks, max_chars: int):
 
     out = []
     total = 0
+
     for c in reversed(chunks):
         if not c:
             continue
@@ -39,7 +40,7 @@ def run_experiment(
     book_bid: str,
     booksum_split: str = "train[:5000]",
     max_questions_per_chapter: int = 1,
-    max_total_questions: int = 50,
+    max_total_questions: int = 25,
     model_id: str = "Qwen/Qwen2.5-3B-Instruct",
     max_new_tokens: int = 64,
     use_retriever: bool = True,
@@ -48,7 +49,7 @@ def run_experiment(
     spoiler_threshold: float = 0.6,
 ):
     """
-    Run per-chapter BookQA experiment using only BookSum dataset.
+    Run the experiment using BookSum dataset.
     
     Args:
         book_bid: BookSum book ID (bid)
@@ -62,13 +63,14 @@ def run_experiment(
         max_context_chars: Max context size to avoid OOM
         spoiler_threshold: Threshold for spoiler detection (0-1, higher = less sensitive)
     """
-    
+
     prep = BookSumPreprocessor(booksum_split=booksum_split)
     gen = LongContextGenerator(model_id=model_id)
     evaluator = BookEvaluator(spoiler_threshold=spoiler_threshold)
 
     #Getting book info
     book_info = prep.get_book_info(book_bid)
+
     if book_info:
         print(f"\nBook: {book_info['title']} (BID: {book_bid})")
         print(f"Source: {book_info['source']}\n")
@@ -89,6 +91,7 @@ def run_experiment(
 
     #Building retriever if requested
     retriever = None
+
     if use_retriever:
         print("\nBuilding retriever index...\n")
 
@@ -114,9 +117,10 @@ def run_experiment(
     spoiler_denom = 0
 
     #Running QA loop
-    print(f"\nRunning {min(len(aligned_questions), max_total_questions)} questions (limited from {len(aligned_questions)} total)...\n")
+    print(f"\nRunning {min(len(aligned_questions), 
+                           max_total_questions)} questions (limited from {len(aligned_questions)} total)...\n")
     
-    #Limiting questions for faster testing
+    #Limiting questions for faster prototype testing
     questions_to_run = aligned_questions[:max_total_questions]
     
     for i, entry in enumerate(questions_to_run, start=1):
@@ -135,7 +139,9 @@ def run_experiment(
 
         #Retrieving safe context (only chapters 0...k)
         if retriever is not None:
-            safe_ids = retriever.retrieve_safe_context(q, max_allowed_k, top_k=top_k)
+            safe_ids = retriever.retrieve_safe_context(q, 
+                                                       max_allowed_k, 
+                                                       top_k=top_k)
             safe_context = [all_chapters[cid] for cid in safe_ids] if safe_ids else [all_chapters[0]]
             
             #Verifying retrieval correctness: all retrieved chapters must be <= max_allowed_k
@@ -150,7 +156,8 @@ def run_experiment(
             safe_context = all_chapters[:max_allowed_k + 1] if max_allowed_k >= 0 else [all_chapters[0]]
             retrieval_correct = True
 
-        safe_context = _cap_context_by_chars(safe_context, max_chars=max_context_chars)
+        safe_context = _cap_context_by_chars(safe_context, 
+                                             max_chars=max_context_chars)
 
         #Generate answer
         ans = gen.generate_answer(q, safe_context, max_new_tokens=max_new_tokens)
@@ -194,32 +201,30 @@ def run_experiment(
     #Counting retrieval correctness
     retrieval_correct_count = sum(1 for r in results_all if r.get("retrieval_correct", True))
     
-    
-    print("\nEXPERIMENT SUMMARY\n")
+    print("\nExperiment Summary\n")
+    print(f"Book ID: {book_bid}")
 
-    print(f"Book BID: {book_bid}")
     if book_info:
         print(f"Book Title: {book_info['title']}")
+    
     print(f"Total Chapters: {len(all_chapters)}")
     print(f"Total Questions: {aggregate_metrics['total_questions']}")
     print()
     print("Spoiler Prevention (Core Contribution):")
     print(f"  Retrieval Correctness: {retrieval_correct_count}/{aggregate_metrics['total_questions']} ({retrieval_correct_count/aggregate_metrics['total_questions']:.1%})")
     print(f"  Spoiler-Free Rate: {aggregate_metrics['spoiler_free_rate']:.4f}")
-    print(f"  → System Design: Only chapters 0...k accessible for chapter k")
-    print(f"  → Result: {'PERFECT' if aggregate_metrics['spoiler_free_rate'] >= 0.99 else 'NEEDS FIX'}")
+    print(f"  System Design: Only chapters 0...k accessible for chapter k")
+    print(f"  Result: {'PERFECT' if aggregate_metrics['spoiler_free_rate'] >= 0.99 else 'NEEDS FIX'}")
     print()
     print("Answer Quality Metrics:")
     print(f"  Average BERT Score: {aggregate_metrics['avg_bert_score']:.4f}")
     print(f"  Answer Accuracy: {aggregate_metrics['answer_accuracy']:.4f} ({int(aggregate_metrics['answer_accuracy']*aggregate_metrics['total_questions'])}/{aggregate_metrics['total_questions']})")
-    if 'avg_llm_judge_score' in aggregate_metrics:
-        print(f"  LLM Judge Score: {aggregate_metrics['avg_llm_judge_score']:.4f}")
 
     return 0
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Per-chapter BookQA using BookSum dataset only"
+        description="Per-chapter BookQA using BookSum dataset"
     )
     parser.add_argument(
         "--book_bid", 
