@@ -3,41 +3,51 @@ import re
 
 class BookSumPreprocessor:
     """
-    BookSum dataset preprocessor for per-chapter QA.
-    Generates questions from chapter summaries or uses them as queries.
+    BookSum dataset preprocessor for per-chapter book QA system.
+    This generates questions from chapter summaries.
     """
     def __init__(self, 
                  booksum_split="train[:5000]"):
         print("Loading BookSum dataset...\n")
-        self.booksum = load_dataset("kmfoda/booksum", split=booksum_split)
-        print(f"Loaded {len(self.booksum)} BookSum entries\n")
+
+        self.booksum = load_dataset("kmfoda/booksum", 
+                                    split=booksum_split)
+        print(f"Successfully loaded {len(self.booksum)} BookSum entries\n")
 
     def list_available_books(self, 
                              limit=50):
         """Return book IDs (bids) that have multiple chapters."""
-        bid_counts = {}
-        for ex in self.booksum:
-            bid = ex.get("bid")
-            chapter = ex.get("chapter", "")
+        bid_dictionary = {}
+
+        for example in self.booksum:
+            bid = example.get("bid")
+            chapter = example.get("chapter", "")
+
             if bid and chapter:
-                bid_counts[bid] = bid_counts.get(bid, 0) + 1
+                bid_dictionary[bid] = bid_dictionary.get(bid, 0) + 1
         
-        #Returning bids with at least 3 chapters
-        books = [(bid, count) for bid, count in bid_counts.items() if count >= 3]
+        #Returning bids with at least 3 chapters for the prototype
+        books = [(bid, count) for bid, count in bid_dictionary.items() if count >= 3]
         #Sorting by chapter count
-        books.sort(key=lambda x: x[1], reverse=True)  
+        books.sort(key=lambda x: x[1], 
+                   reverse=True)  
+        
         return books[:limit]
 
     def get_book_info(self, 
                       book_bid):
-        """Get book title and metadata for a given bid."""
-        for ex in self.booksum:
-            if str(ex.get("bid")) == str(book_bid):
+        """Gets book title and metadata for a given bid."""
+
+        for example in self.booksum:
+            if str(example.get("bid")) == str(book_bid):
                 return {
                     "bid": book_bid,
-                    "title": ex.get("summary_name", f"Book {book_bid}"),
-                    "source": ex.get("source", "unknown")
+                    "title": example.get("summary_name", 
+                                         f"Book {book_bid}"),
+                    "source": example.get("source", 
+                                          "unknown")
                 }
+
         return None
 
     def prepare_chapters_and_questions(self, 
@@ -52,7 +62,7 @@ class BookSumPreprocessor:
         - Generate simple questions from summary
         - Enforce spoiler-free constraint: questions for chapter k can only use chapters 0...k
         
-        Returns:
+        Returning:
             aligned_data: List of {question, gold_answer, max_chapter_idx, unanswerable}
             chapters_text: List of chapter texts
         """
@@ -73,9 +83,12 @@ class BookSumPreprocessor:
         
         #Extracting chapter texts and summaries
         chapters_data = []
-        for ex in book_chapters:
-            chapter_text = ex.get("chapter", "").strip()
-            summary_text = ex.get("summary_text", "").strip()
+
+        for example in book_chapters:
+            chapter_text = example.get("chapter", 
+                                       "").strip()
+            summary_text = example.get("summary_text", 
+                                       "").strip()
             
             if chapter_text:  #Only including if chapter has content
                 chapters_data.append({
@@ -95,7 +108,7 @@ class BookSumPreprocessor:
         for chapter_idx, chapter_info in enumerate(chapters_data):
             summary = chapter_info["summary"]
             
-            if not summary or len(summary) < 50:
+            if not summary or len(summary) < 100:
                 #Skipping chapters without meaningful summaries
                 continue
             
@@ -106,19 +119,19 @@ class BookSumPreprocessor:
                 max_questions=max_questions_per_chapter
             )
             
-            for q_data in questions:
+            for question_data in questions:
                 aligned_data.append({
-                    "question": q_data["question"],
-                    "gold_answer": q_data["answer"],
+                    "question": question_data["question"],
+                    "gold_answer": question_data["answer"],
                     "max_chapter_idx": chapter_idx,  #Can only use chapters 0...chapter_idx
                     "unanswerable": False,
-                    "chapter_summary": summary[:200]  #Storing snippet for reference
+                    "chapter_summary": summary[:500]  #Storing snippet for reference
                 })
         
         if not aligned_data:
             raise ValueError(
                 f"No questions generated for bid={book_bid}. "
-                f"Chapters may lack summaries. Try a different book."
+                f"Chapters may lack summaries. Please try a different book id."
             )
         
         chapters_text = [ch["text"] for ch in chapters_data]
@@ -194,6 +207,7 @@ class BookSumPreprocessor:
         
         if characters:
             char = characters[0]
+
             #Generating character-focused question
             if ' is ' in sentence.lower() or ' was ' in sentence.lower():
                 question = f"Who is {char} and what is their role?"
@@ -210,23 +224,3 @@ class BookSumPreprocessor:
             answer = sentence
         
         return question, answer
-
-    def _find_first_revealing_chapter(self, 
-                                      answer, 
-                                      chapters):
-        """
-        Find the earliest chapter that contains evidence for the answer.
-        Used for validation and spoiler detection.
-        """
-        kws = [w.lower() for w in str(answer).split() if len(w) > 3]
-        kws = kws[:8]
-        if not kws:
-            return None
-
-        for idx, text in enumerate(chapters):
-            t = text.lower()
-            hits = sum(1 for k in kws[:3] if k in t)
-            if hits >= 2:
-                return idx
-
-        return None
