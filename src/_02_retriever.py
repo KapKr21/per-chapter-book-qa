@@ -7,10 +7,12 @@ class ChapterRestrictedRetriever:
         self.index = None
         self.chapter_map = []
 
-    def build_index(self, chapters):
+    def build_index(self, 
+                    chapters):
         """
         Index all chapters (we apply spoiler constraint at retrieval time).
         """
+
         embeddings = self.embedder.embed_chapters(chapters)
         embeddings = np.array(embeddings).astype("float32")
 
@@ -23,6 +25,7 @@ class ChapterRestrictedRetriever:
         """
         Returns safe chapter IDs (<= max_allowed_chapter_idx).
         """
+        
         if self.index is None:
             raise RuntimeError("Index not built. Call build_index(chapters) first.")
 

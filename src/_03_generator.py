@@ -3,8 +3,6 @@ import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from transformers import BitsAndBytesConfig
 
-from transformers import GenerationConfig
-
 class LongContextGenerator:
     def __init__(
         self,
@@ -14,8 +12,8 @@ class LongContextGenerator:
         attn_implementation="eager",
     ):
         self.model_id = model_id
-
         quantization_config = None
+
         if load_in_4bit:
             quantization_config = BitsAndBytesConfig(
                 load_in_4bit=True,
@@ -24,7 +22,9 @@ class LongContextGenerator:
             )
 
         print(f"Loading generator: {model_id}")
-        self.tokenizer = AutoTokenizer.from_pretrained(model_id, use_fast=True)
+
+        self.tokenizer = AutoTokenizer.from_pretrained(model_id, 
+                                                       use_fast=True)
 
         if self.tokenizer.pad_token is None and self.tokenizer.eos_token is not None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
@@ -33,6 +33,7 @@ class LongContextGenerator:
             device_map="auto",
             dtype=torch.float16,
         )
+
         if quantization_config is not None:
             model_kwargs["quantization_config"] = quantization_config
 
@@ -46,6 +47,7 @@ class LongContextGenerator:
                 print("Using FlashAttention2.")
             except Exception as e:
                 print(f"FlashAttention2 unavailable, falling back. Reason: {type(e).__name__}: {e}")
+
                 self.model = AutoModelForCausalLM.from_pretrained(
                     model_id,
                     attn_implementation=attn_implementation,
@@ -83,7 +85,9 @@ class LongContextGenerator:
             "ANSWER:"
         )
 
-        inputs = self.tokenizer(prompt, return_tensors="pt", truncation=False)
+        inputs = self.tokenizer(prompt, 
+                                return_tensors="pt", 
+                                truncation=False)
         input_ids = inputs["input_ids"].to(self.model.device)
         attn = inputs["attention_mask"].to(self.model.device)
 
@@ -104,4 +108,6 @@ class LongContextGenerator:
             )
 
         new_tokens = outputs[0, input_ids.shape[1]:]
-        return self.tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
+
+        return self.tokenizer.decode(new_tokens, 
+                                     skip_special_tokens=True).strip()
