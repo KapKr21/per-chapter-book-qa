@@ -12,7 +12,7 @@ class BookSumPreprocessor:
 
         self.booksum = load_dataset("kmfoda/booksum", 
                                     split=booksum_split)
-        print(f"\nSuccessfully loaded {len(self.booksum)} BookSum entries\n")
+        print(f"Successfully loaded {len(self.booksum)} BookSum entries\n")
 
     def list_available_books(self, 
                              limit=50):

@@ -249,7 +249,7 @@ def main():
     parser.add_argument(
         "--max_total_questions",
         type=int,
-        default=50,
+        default=20,
         help="Maximum total questions to evaluate (default: 50 for faster testing)"
     )
     parser.add_argument(
