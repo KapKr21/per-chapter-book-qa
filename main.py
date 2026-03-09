@@ -166,7 +166,9 @@ def run_experiment(
         spoiler_free = retrieval_correct
 
         #Evaluating answer quality
-        metrics = evaluator.evaluate(ans, gold, future_context, question=q)
+        metrics = evaluator.evaluate(ans, 
+                                     gold, 
+                                     future_context)
 
         #Overriding spoiler detection: if retrieval was correct, answer is spoiler-free
         #(We only gave the model chapters 0...k, so it CANNOT spoil future chapters)
@@ -310,7 +312,7 @@ def main():
             print(f"{bid:<10} {count:<10} {title}")
         
         print("\nUsage:")
-        print(f"  python main.py --book_bid <BID> --use_retriever")
+        print(f"  python main.py --book_bid <BID> --use_retriever\n")
         return 0
     
     #Validating book_bid is provided for experiment mode

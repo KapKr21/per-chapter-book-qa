@@ -19,8 +19,8 @@ class BookEmbedder:
         )
 
     def embed_chapters(self, chapters):
-        print(f"Embedding {len(chapters)} chapters...")
-        
+        print(f"\nEmbedding {len(chapters)} chapters...")
+
         return self.model.encode(chapters, 
                                  show_progress_bar=True)
 
