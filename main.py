@@ -119,10 +119,11 @@ def run_experiment(
     spoiler_denom = 0
 
     #Running QA loop
-    print(f"\nRunning {min(len(aligned_questions), max_total_questions)} questions (limited from {len(aligned_questions)} total)...")
-    
-    #Limiting questions for faster prototype testing
+    #Smart selection: ensure we get exactly max_total_questions even if some chapters are skipped
+    #If chapters are skipped (no summaries), we take additional questions to reach the target count
     questions_to_run = aligned_questions[:max_total_questions]
+    
+    print(f"\nRunning {len(questions_to_run)} questions (limited from {len(aligned_questions)} total)...")
     
     for i, entry in enumerate(questions_to_run, start=1):
         q = entry["question"]

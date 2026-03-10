@@ -108,9 +108,9 @@ class BookSumPreprocessor:
         for chapter_idx, chapter_info in enumerate(chapters_data):
             summary = chapter_info["summary"]
             
-            # if not summary or len(summary) < 100:
-            #     #Skipping chapters without meaningful summaries
-            #     continue
+            if not summary or len(summary) < 100:
+                #Skipping chapters without meaningful summaries
+                continue
             
             #Generating questions from this chapter's summary
             questions = self._generate_questions_from_summary(
