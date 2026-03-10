@@ -1,0 +1,163 @@
+{
+  "book_bid": "145",
+  "book_title": "book 1, Chapter 1",
+  "total_chapters": 266,
+  "experiment_config": {
+    "model_id": "Qwen/Qwen2.5-3B-Instruct",
+    "use_retriever": true,
+    "top_k": 2,
+    "max_questions_per_chapter": 1,
+    "max_total_questions": 20,
+    "spoiler_threshold": 0.6
+  },
+  "aggregate_metrics": {
+    "total_questions": 20,
+    "avg_bert_score": 0.49999999552965163,
+    "answer_accuracy": 0.5,
+    "spoiler_rate": 0.0,
+    "spoiler_free_rate": 1.0,
+    "avg_spoiler_score": 0.5576808243989945
+  },
+  "individual_results": [
+    {
+      "bert_score": 0.43880075216293335,
+      "answer_equivalent": false,
+      "spoiler_violation": false,
+      "spoiler_score": 0.6458530426025391,
+      "retrieval_correct": true
+    },
+    {
+      "bert_score": 0.5513796806335449,
+      "answer_equivalent": true,
+      "spoiler_violation": false,
+      "spoiler_score": 0.5487203598022461,
+      "retrieval_correct": true
+    },
+    {
+      "bert_score": 0.3871326148509979,
+      "answer_equivalent": false,
+      "spoiler_violation": false,
+      "spoiler_score": 0.5907489061355591,
+      "retrieval_correct": true
+    },
+    {
+      "bert_score": 0.3092789947986603,
+      "answer_equivalent": false,
+      "spoiler_violation": false,
+      "spoiler_score": 0.3978179693222046,
+      "retrieval_correct": true
+    },
+    {
+      "bert_score": 0.6612074375152588,
+      "answer_equivalent": true,
+      "spoiler_violation": false,
+      "spoiler_score": 0.658820629119873,
+      "retrieval_correct": true
+    },
+    {
+      "bert_score": 0.7258692979812622,
+      "answer_equivalent": true,
+      "spoiler_violation": false,
+      "spoiler_score": 0.635507345199585,
+      "retrieval_correct": true
+    },
+    {
+      "bert_score": 0.5513303279876709,
+      "answer_equivalent": true,
+      "spoiler_violation": false,
+      "spoiler_score": 0.7110893726348877,
+      "retrieval_correct": true
+    },
+    {
+      "bert_score": 0.34502044320106506,
+      "answer_equivalent": false,
+      "spoiler_violation": false,
+      "spoiler_score": 0.34949183464050293,
+      "retrieval_correct": true
+    },
+    {
+      "bert_score": 0.3625710606575012,
+      "answer_equivalent": false,
+      "spoiler_violation": false,
+      "spoiler_score": 0.6385528445243835,
+      "retrieval_correct": true
+    },
+    {
+      "bert_score": 0.5448126196861267,
+      "answer_equivalent": true,
+      "spoiler_violation": false,
+      "spoiler_score": 0.6054057478904724,
+      "retrieval_correct": true
+    },
+    {
+      "bert_score": 0.6254763603210449,
+      "answer_equivalent": true,
+      "spoiler_violation": false,
+      "spoiler_score": 0.5970827341079712,
+      "retrieval_correct": true
+    },
+    {
+      "bert_score": 0.2719387412071228,
+      "answer_equivalent": false,
+      "spoiler_violation": false,
+      "spoiler_score": 0.3096505403518677,
+      "retrieval_correct": true
+    },
+    {
+      "bert_score": 0.4165637791156769,
+      "answer_equivalent": false,
+      "spoiler_violation": false,
+      "spoiler_score": 0.4476521611213684,
+      "retrieval_correct": true
+    },
+    {
+      "bert_score": 0.4535467028617859,
+      "answer_equivalent": false,
+      "spoiler_violation": false,
+      "spoiler_score": 0.44455331563949585,
+      "retrieval_correct": true
+    },
+    {
+      "bert_score": 0.5574884414672852,
+      "answer_equivalent": true,
+      "spoiler_violation": false,
+      "spoiler_score": 0.4432467818260193,
+      "retrieval_correct": true
+    },
+    {
+      "bert_score": 0.685212254524231,
+      "answer_equivalent": true,
+      "spoiler_violation": false,
+      "spoiler_score": 0.5125014185905457,
+      "retrieval_correct": true
+    },
+    {
+      "bert_score": 0.5915830135345459,
+      "answer_equivalent": true,
+      "spoiler_violation": false,
+      "spoiler_score": 0.6135711073875427,
+      "retrieval_correct": true
+    },
+    {
+      "bert_score": 0.4602164328098297,
+      "answer_equivalent": false,
+      "spoiler_violation": false,
+      "spoiler_score": 0.6314239501953125,
+      "retrieval_correct": true
+    },
+    {
+      "bert_score": 0.4825487732887268,
+      "answer_equivalent": false,
+      "spoiler_violation": false,
+      "spoiler_score": 0.7236454486846924,
+      "retrieval_correct": true
+    },
+    {
+      "bert_score": 0.5780221819877625,
+      "answer_equivalent": true,
+      "spoiler_violation": false,
+      "spoiler_score": 0.6482809782028198,
+      "retrieval_correct": true
+    }
+  ]
+}
