@@ -42,12 +42,6 @@ conda env create -f environment.yml
 conda activate per-chapter-book-qa
 ```
 
-Or install with pip:
-
-```bash
-pip install -r requirements.txt
-```
-
 ## Datasets
 
 This project uses:
@@ -122,63 +116,6 @@ Answer Quality Metrics:
   Answer Accuracy: 0.7500 (15/20)
 ```
 
-## How It Works
-
-1. **Chapter Segmentation**: BookSum provides pre-segmented chapters with summaries
-2. **Question Generation**: Heuristic-based conversion of chapter summaries into questions (extracts character names, converts statements to questions)
-3. **Spoiler Prevention**: For a question about chapter k, only chapters 0...k are retrievable via FAISS index
-4. **Context Capping**: Limits context to 12,000 characters by default to prevent OOM errors
-5. **Answer Generation**: LLM (Qwen2.5-3B-Instruct by default) generates answers using only "safe" (non-spoiler) context
-6. **Evaluation**: 
-   - BERT-based semantic similarity for answer equivalence (threshold: 0.5)
-   - Spoiler detection via semantic similarity with future chapters (threshold: 0.6)
-   - Retrieval correctness verification
-
-## Key Features
-
-- **Spoiler-Free**: Hard constraint prevents accessing future chapters through retrieval-time filtering
-- **Scalable**: FAISS-based retrieval handles long books efficiently
-- **Simple**: Uses only BookSum dataset (no complex data alignment needed)
-- **Extensible**: Easy to add better question generation (e.g., using LLMs)
-- **Modern Evaluation**: BERT-based semantic similarity (all-MiniLM-L6-v2) for answer equivalence
-- **Research-Grade**: Follows best practices from recent QA literature
-- **Memory Efficient**: Context capping and 4-bit quantization support to prevent OOM
-- **Flexible Models**: Supports any HuggingFace causal LM (Qwen, Llama, etc.)
-
-## Project Structure
-
-```
-per-chapter-book-qa/
-├── main.py                      # Main entry point for experiments
-├── src/
-│   ├── _00_preprocess.py        # BookSum preprocessing & question generation
-│   ├── _01_embedder.py          # Chapter embedding with Sentence Transformers
-│   ├── _02_retriever.py         # Spoiler-safe chapter retrieval with FAISS
-│   ├── _03_generator.py         # Answer generation with LLMs (Qwen/Llama support)
-│   └── _04_evaluator.py         # BERT-based answer equivalence + spoiler detection
-├── requirements.txt             # Python dependencies
-└── environment.yml              # Conda environment specification
-```
-
-## Improving Question Quality
-
-The current implementation uses heuristic-based question generation from chapter summaries:
-- Extracts character names (capitalized words)
-- Converts statements to questions
-- Generates character-focused and generic questions
-
-For better quality, we can:
-
-1. **Use an LLM for question generation**:
-```python
-# In src/_00_preprocess.py, modify _generate_questions_from_summary()
-# to use GPT-4, Claude, or another LLM to generate questions
-```
-
-2. **Manual annotation**: Create a small set of high-quality questions for evaluation
-
-3. **Hybrid approach**: Combine generated questions with human-written ones
-
 ## References & Related Work
 
 This project builds upon several key papers in long-document QA and narrative understanding:
@@ -245,7 +182,3 @@ If you use this code in your research, please cite:
   url={https://github.com/KapKr21/per-chapter-book-qa}
 }
 ```
-
-## License
-
-MIT License - see LICENSE file for details.
