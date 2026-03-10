@@ -1,5 +1,7 @@
 import argparse
 import sys
+import json
+from datetime import datetime
 
 from src._00_preprocess import BookSumPreprocessor
 from src._03_generator import LongContextGenerator
@@ -220,6 +222,40 @@ def run_experiment(
     print("Answer Quality Metrics:")
     print(f"  Average BERT Score: {aggregate_metrics['avg_bert_score']:.4f}")
     print(f"  Answer Accuracy: {aggregate_metrics['answer_accuracy']:.4f} ({int(aggregate_metrics['answer_accuracy']*aggregate_metrics['total_questions'])}/{aggregate_metrics['total_questions']})")
+
+    #Saving results to JSON
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    results_file = f"results_{book_bid}_{timestamp}.json"
+    
+    results_data = {
+        "book_bid": book_bid,
+        "book_title": book_info['title'] if book_info else f"Book {book_bid}",
+        "total_chapters": len(all_chapters),
+        "experiment_config": {
+            "model_id": model_id,
+            "use_retriever": use_retriever,
+            "top_k": top_k,
+            "max_questions_per_chapter": max_questions_per_chapter,
+            "max_total_questions": max_total_questions,
+            "spoiler_threshold": spoiler_threshold,
+        },
+        "aggregate_metrics": aggregate_metrics,
+        "individual_results": results_all,
+    }
+    
+    with open(results_file, 'w') as f:
+        json.dump(results_data, f, indent=2)
+    print(f"\nResults saved to: {results_file}")
+    
+    #Generating performance figure
+    try:
+        from visualize_results import create_performance_figure
+        figure_file = f"performance_{book_bid}_{timestamp}.png"
+        create_performance_figure(results_data, figure_file)
+        print(f"Performance figure saved to: {figure_file}")
+    except Exception as e:
+        print(f"\nWarning: Could not generate performance figure: {e}")
+        print("You can generate it manually with: python visualize_results.py --results_json <results_file>")
 
     return 0
 

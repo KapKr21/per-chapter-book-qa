@@ -21,3 +21,6 @@ scikit-learn
 
 #Environment & API
 python-dotenv
+
+#visualisation
+matplotlib
