@@ -189,15 +189,19 @@ def run_experiment(
                 spoiler_flags += 1
 
         #Printing progress
-        if i % 5 == 0 or i <= 3 or i == len(questions_to_run):
-            print(f"\nExample {i}/{len(questions_to_run)}\n")
-            print(f"Chapter: {k+1}/{len(all_chapters)}")
-            print(f"Retrieval Correct: {'YES' if retrieval_correct else 'NO'}")
-            print(f"Spoiler-Free: {'YES' if spoiler_free else 'NO (retrieval error)'}")
-            print(f"BERT Score: {metrics['bert_score']:.4f} | Answer Correct: {metrics['answer_equivalent']}")
-            print(f"\nQuestion: {q}")
-            print(f"\nGround Truth: {gold[:200]}...")
-            print(f"\nGenerated Answer: {ans}")
+        # For small question counts (<= 10), print all questions
+        # For larger counts, print first 3, then every 5th, and the last one
+        #should_print = (len(questions_to_run) <= 10) or (i % 5 == 0) or (i <= 3) or (i == len(questions_to_run))
+        
+        #if should_print:
+        print(f"\nExample {i}/{len(questions_to_run)}\n")
+        print(f"Chapter: {k+1}/{len(all_chapters)}")
+        print(f"Retrieval Correct: {'YES' if retrieval_correct else 'NO'}")
+        print(f"Spoiler-Free: {'YES' if spoiler_free else 'NO (retrieval error)'}")
+        print(f"BERT Score: {metrics['bert_score']:.4f} | Answer Correct: {metrics['answer_equivalent']}")
+        print(f"\nQuestion: {q}")
+        print(f"\nGround Truth: {gold[:200]}...")
+        print(f"\nGenerated Answer: {ans}")
 
     #Summary - computing aggregate metrics
     aggregate_metrics = evaluator.compute_aggregate_metrics(results_all)
