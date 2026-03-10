@@ -176,7 +176,7 @@ If you use this code in your research, please cite:
 
 ```bibtex
 @misc{per-chapter-bookqa,
-  title={Per-Chapter Book QA: Preventing Spoilers in Long-Document Understanding},
+  title={Per-Chapter Book QA: Preventing Spoilers in Long-Document Question Answering},
   author={Kapil Kumar Khatri},
   year={2026},
   url={https://github.com/KapKr21/per-chapter-book-qa}
