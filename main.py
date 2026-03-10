@@ -188,7 +188,7 @@ def run_experiment(
                 spoiler_flags += 1
 
         #Printing progress
-        if i % 5 == 0 or i <= 3:
+        if i % 5 == 0 or i <= 3 or i == len(questions_to_run):
             print(f"\nExample {i}/{len(questions_to_run)}\n")
             print(f"Chapter: {k+1}/{len(all_chapters)}")
             print(f"Retrieval Correct: {'YES' if retrieval_correct else 'NO'}")
