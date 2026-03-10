@@ -1,4 +1,4 @@
-# Per-Chapter-BookQA: Per-Chapter LLM Understanding
+# Per-Chapter-BookQA: Per-Chapter LLM Question Answering
 
 This project addresses the "spoiler" problem in long-document Question Answering (QA). While many existing systems perform QA over entire books, they often accidentally leak future plot information. Per-Chapter-BookQA enforces hard chapter boundaries to ensure the AI only "knows" what a reader would know up to a specific point.
 
