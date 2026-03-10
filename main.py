@@ -188,12 +188,6 @@ def run_experiment(
             if metrics.get("spoiler_violation"):
                 spoiler_flags += 1
 
-        #Printing progress
-        # For small question counts (<= 10), print all questions
-        # For larger counts, print first 3, then every 5th, and the last one
-        #should_print = (len(questions_to_run) <= 10) or (i % 5 == 0) or (i <= 3) or (i == len(questions_to_run))
-        
-        #if should_print:
         print(f"\nExample {i}/{len(questions_to_run)}\n")
         print(f"Chapter: {k+1}/{len(all_chapters)}")
         print(f"Retrieval Correct: {'YES' if retrieval_correct else 'NO'}")
