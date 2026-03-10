@@ -1,0 +1,58 @@
+{
+  "book_bid": "145",
+  "book_title": "book 1, Chapter 1",
+  "total_chapters": 266,
+  "experiment_config": {
+    "model_id": "Qwen/Qwen2.5-3B-Instruct",
+    "use_retriever": true,
+    "top_k": 2,
+    "max_questions_per_chapter": 1,
+    "max_total_questions": 5,
+    "spoiler_threshold": 0.6
+  },
+  "aggregate_metrics": {
+    "total_questions": 5,
+    "avg_bert_score": 0.46955989599227904,
+    "answer_accuracy": 0.4,
+    "spoiler_rate": 0.0,
+    "spoiler_free_rate": 1.0,
+    "avg_spoiler_score": 0.5683921813964844
+  },
+  "individual_results": [
+    {
+      "bert_score": 0.43880075216293335,
+      "answer_equivalent": false,
+      "spoiler_violation": false,
+      "spoiler_score": 0.6458530426025391,
+      "retrieval_correct": true
+    },
+    {
+      "bert_score": 0.5513796806335449,
+      "answer_equivalent": true,
+      "spoiler_violation": false,
+      "spoiler_score": 0.5487203598022461,
+      "retrieval_correct": true
+    },
+    {
+      "bert_score": 0.3871326148509979,
+      "answer_equivalent": false,
+      "spoiler_violation": false,
+      "spoiler_score": 0.5907489061355591,
+      "retrieval_correct": true
+    },
+    {
+      "bert_score": 0.3092789947986603,
+      "answer_equivalent": false,
+      "spoiler_violation": false,
+      "spoiler_score": 0.3978179693222046,
+      "retrieval_correct": true
+    },
+    {
+      "bert_score": 0.6612074375152588,
+      "answer_equivalent": true,
+      "spoiler_violation": false,
+      "spoiler_score": 0.658820629119873,
+      "retrieval_correct": true
+    }
+  ]
+}
